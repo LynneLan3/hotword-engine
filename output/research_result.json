@@ -1,0 +1,335 @@
+{
+  "input": {
+    "game": "Mortal Shell II",
+    "topic": "beta save / beta rewards / progress carry-over",
+    "existing_page": "/mortal-shell-ii/beta-progress-carry-over/"
+  },
+  "run_at": "2026-08-14T14:58:40+00:00",
+  "source_counts": {
+    "youtube": {
+      "raw_candidates": 34,
+      "valid_evidence": 1,
+      "filtered": {
+        "seo_description": 5,
+        "title_only": 21,
+        "livestream_intro": 3,
+        "low_info": 3,
+        "official_copy_no_question": 1
+      },
+      "filtered_total": 33
+    },
+    "reddit": {
+      "raw_candidates": 115,
+      "valid_evidence": 0,
+      "filtered": {
+        "noise": 2,
+        "title_only": 105,
+        "low_info": 6,
+        "off_topic_chat": 2
+      },
+      "filtered_total": 115
+    },
+    "steam": {
+      "raw_candidates": 33,
+      "valid_evidence": 13,
+      "filtered": {
+        "title_only": 7,
+        "quote_shell": 6,
+        "off_topic_chat": 2,
+        "adjacent_tech": 2,
+        "low_info": 3
+      },
+      "filtered_total": 20
+    }
+  },
+  "evidence": [
+    {
+      "source": "youtube",
+      "title": "Mortal Shell II – Do This Before Launch! Unlock the Exclusive Skin & Skip the Prologue",
+      "url": "https://www.youtube.com/watch?v=sixRYR3HyiM",
+      "evidence": "Unlock the exclusive Flayed Harbinger skin before Mortal Shell II launches! Simply download the free Mortal Shell II Open Beta and play for at least 30 minutes. The exclusive cosmetic skin will become available in the full game at launch. Important: • Use the same platform account for the Beta and the full game. • The skin will not appear inside the Beta. • You may not receive an unlock notification. • Progress beyond Marrow Keep to unlock the option to skip the Prologue. • Weapons, currency, Shells, upgrades, and collectibles will reset at launch. Mortal Shell II releases on August 20, 2026, ",
+      "excerpt": "Unlock the exclusive Flayed Harbinger skin before Mortal Shell II launches! Simply download the free Mortal Shell II Open Beta and play for at least 30 minutes. The exclusive cosmetic skin will become available in the full game at launch. Important: • Use the same platform accoun",
+      "player_question": "",
+      "discovered_topic": "playtime_threshold",
+      "relevance": 0.8
+    },
+    {
+      "source": "steam",
+      "title": "save transfer to full game",
+      "url": "https://steamcommunity.com/app/2584270/discussions/0/418424007826605250/",
+      "evidence": "To clarify, it does not. If you play the Open Beta for more than 30 minutes you will automatically unlock the Flayed Harbinger, an exclusive cosmetic reward available to redeem in the full game at launch. You will also be able to skip the prologue. But save data will not transfer.",
+      "excerpt": "To clarify, it does not. If you play the Open Beta for more than 30 minutes you will automatically unlock the Flayed Harbinger, an exclusive cosmetic reward available to redeem in the full game at launch. You will also be able to skip the prologue. But save data will not transfer",
+      "player_question": "",
+      "discovered_topic": "playtime_threshold",
+      "relevance": 0.8
+    },
+    {
+      "source": "steam",
+      "title": "Does your save carry on to the full game?",
+      "url": "https://steamcommunity.com/app/2584270/discussions/2/418424007826701779/",
+      "evidence": "you get the skin and the ability to do a skip at the start, everything else resets read below -------------- PROGRESS CARRY-OVER Play the Mortal Shell II Open Beta to unlock The Flayed Harbinger, an exclusive cosmetic reward available to claim in the full game at launch. Players who progress beyond the Marrow Keep will also unlock the option to skip the Prologue in the full game. To preserve the balance of the full release, beta save progress will not carry over in full. Currency, weapons, Shells, collectibles, and other items discovered during the Open Beta will reset at launch. you get the s",
+      "excerpt": "you get the skin and the ability to do a skip at the start, everything else resets read below -------------- PROGRESS CARRY-OVER Play the Mortal Shell II Open Beta to unlock The Flayed Harbinger, an exclusive cosmetic reward available to claim in the full game at launch. Players ",
+      "player_question": "",
+      "discovered_topic": "prologue_skip",
+      "relevance": 0.75
+    },
+    {
+      "source": "steam",
+      "title": "Progress in Beta carried?",
+      "url": "https://steamcommunity.com/app/2584270/discussions/2/563659184402388065/",
+      "evidence": "From the store page Players who progress beyond the Marrow Keep will also unlock the option to skip the Prologue in the full game. To preserve the balance of the full release, beta save progress will not carry over in full. Currency, weapons, Shells, collectibles, and other items discovered during the Open Beta will reset at launch.",
+      "excerpt": "From the store page Players who progress beyond the Marrow Keep will also unlock the option to skip the Prologue in the full game. To preserve the balance of the full release, beta save progress will not carry over in full. Currency, weapons, Shells, collectibles, and other items",
+      "player_question": "",
+      "discovered_topic": "prologue_skip",
+      "relevance": 0.75
+    },
+    {
+      "source": "steam",
+      "title": "save transfer to full game",
+      "url": "https://steamcommunity.com/app/2584270/discussions/0/418424007826605250/",
+      "evidence": "does the save transfer over? I just wanna know how much time to pump into it. Definitely getting it, either way.",
+      "excerpt": "does the save transfer over? I just wanna know how much time to pump into it. Definitely getting it, either way.",
+      "player_question": "Beta 存档/进度会带到正式版吗？",
+      "discovered_topic": "full_save_transfer",
+      "relevance": 0.59
+    },
+    {
+      "source": "steam",
+      "title": "Progress in Beta carried?",
+      "url": "https://steamcommunity.com/app/2584270/discussions/2/563659184402388065/",
+      "evidence": "You're telling me I'm going to have to kill that fat ogre that is playing Mario cart on my face again. not even a bad fight the hornets are just a nuisance. Also, do we get anything at launch for 100 percent completion of the beta?",
+      "excerpt": "You're telling me I'm going to have to kill that fat ogre that is playing Mario cart on my face again. not even a bad fight the hornets are just a nuisance. Also, do we get anything at launch for 100 percent completion of the beta?",
+      "player_question": "Beta 100% completion 有额外 launch reward 吗？",
+      "discovered_topic": "completion_bonus",
+      "relevance": 0.59
+    },
+    {
+      "source": "steam",
+      "title": "Finished Beta",
+      "url": "https://steamcommunity.com/app/2584270/discussions/2/564785528365536049/",
+      "evidence": "Since I finished the Beta, can I uninstall the game now and still collect the rewards when the game goes live?",
+      "excerpt": "Since I finished the Beta, can I uninstall the game now and still collect the rewards when the game goes live?",
+      "player_question": "卸载 beta 后 launch reward 还会在吗？",
+      "discovered_topic": "uninstall_keep_rewards",
+      "relevance": 0.59
+    },
+    {
+      "source": "steam",
+      "title": "Does your save carry on to the full game?",
+      "url": "https://steamcommunity.com/app/2584270/discussions/2/418424007826701779/",
+      "evidence": "you can skip the prologue in the main game if you have an open beta save, according to the store page",
+      "excerpt": "you can skip the prologue in the main game if you have an open beta save, according to the store page",
+      "player_question": "",
+      "discovered_topic": "prologue_skip",
+      "relevance": 0.53
+    },
+    {
+      "source": "steam",
+      "title": "Will we lose our beta unlocks if we uninstall the beta before the game releases?",
+      "url": "https://steamcommunity.com/app/2584270/discussions/0/572668324079662995/",
+      "evidence": "Your save from the beta will not carry over to the full game.",
+      "excerpt": "Your save from the beta will not carry over to the full game.",
+      "player_question": "",
+      "discovered_topic": "full_save_transfer",
+      "relevance": 0.53
+    },
+    {
+      "source": "steam",
+      "title": "Progress in Beta carried?",
+      "url": "https://steamcommunity.com/app/2584270/discussions/2/563659184402388065/",
+      "evidence": "Why not just save the progress? Very strange to me. Great game though, very excited.",
+      "excerpt": "Why not just save the progress? Very strange to me. Great game though, very excited.",
+      "player_question": "Why not just save the progress?",
+      "discovered_topic": "full_save_transfer",
+      "relevance": 0.5
+    },
+    {
+      "source": "steam",
+      "title": "Entry point of the finished game version?",
+      "url": "https://steamcommunity.com/app/2584270/discussions/2/581678128090404841/",
+      "evidence": "When the beta ends and the full game is released, do you have to start over from scratch? Or will your save data carry over, allowing you to continue from where you left off? By the way I enjoyed playing the beta very much. I´m really excited about the finished game ːsteamthumbsupː",
+      "excerpt": "When the beta ends and the full game is released, do you have to start over from scratch? Or will your save data carry over, allowing you to continue from where you left off? By the way I enjoyed playing the beta very much. I´m really excited about the finished game ːsteamthumbsu",
+      "player_question": "Beta 存档/进度会带到正式版吗？",
+      "discovered_topic": "full_save_transfer",
+      "relevance": 0.44
+    },
+    {
+      "source": "steam",
+      "title": "Feedback about skipping prologue",
+      "url": "https://steamcommunity.com/app/2584270/discussions/2/573793348713724413/",
+      "evidence": "Hello, I just finished the beta (need just to do one achievement and I'm done) and I was reading about the rewards in the full game. Since there are some collectables in the prologue area, can we still play the prologue AND obtain the cosmetic reward by using the beta save? I'm guessing the skip is for the starting village (which has some materials) and the area before the Keep.",
+      "excerpt": "Hello, I just finished the beta (need just to do one achievement and I'm done) and I was reading about the rewards in the full game. Since there are some collectables in the prologue area, can we still play the prologue AND obtain the cosmetic reward by using the beta save? I'm g",
+      "player_question": "Since there are some collectables in the prologue area, can we still play the prologue AND obtain the cosmetic reward by using the beta save?",
+      "discovered_topic": "prologue_skip",
+      "relevance": 0.44
+    },
+    {
+      "source": "steam",
+      "title": "Progress in Beta carried?",
+      "url": "https://steamcommunity.com/app/2584270/discussions/2/563659184402388065/",
+      "evidence": "or will there be a full reset at release?",
+      "excerpt": "or will there be a full reset at release?",
+      "player_question": "Beta 存档/进度会带到正式版吗？",
+      "discovered_topic": "full_save_transfer",
+      "relevance": 0.44
+    },
+    {
+      "source": "steam",
+      "title": "Finished Beta",
+      "url": "https://steamcommunity.com/app/2584270/discussions/2/564785528365536049/",
+      "evidence": "Progress doesn't carry over. Although you get to skip the tutorial on release Oh you were talking about the skin for playing the beta.",
+      "excerpt": "Progress doesn't carry over. Although you get to skip the tutorial on release Oh you were talking about the skin for playing the beta.",
+      "player_question": "",
+      "discovered_topic": "full_save_transfer",
+      "relevance": 0.44
+    }
+  ],
+  "player_questions": [
+    {
+      "question": "Beta 存档/进度会带到正式版吗？",
+      "discovered_topic": "full_save_transfer",
+      "count": 3,
+      "sources": [
+        "steam"
+      ],
+      "example_urls": [
+        "https://steamcommunity.com/app/2584270/discussions/0/418424007826605250/",
+        "https://steamcommunity.com/app/2584270/discussions/2/581678128090404841/",
+        "https://steamcommunity.com/app/2584270/discussions/2/563659184402388065/"
+      ],
+      "example_excerpt": "does the save transfer over? I just wanna know how much time to pump into it. Definitely getting it, either way."
+    },
+    {
+      "question": "Beta 100% completion 有额外 launch reward 吗？",
+      "discovered_topic": "completion_bonus",
+      "count": 1,
+      "sources": [
+        "steam"
+      ],
+      "example_urls": [
+        "https://steamcommunity.com/app/2584270/discussions/2/563659184402388065/"
+      ],
+      "example_excerpt": "You're telling me I'm going to have to kill that fat ogre that is playing Mario cart on my face again. not even a bad fight the hornets are just a nuisance. Also, do we get anything at launch for 100 percent completion of the beta?"
+    },
+    {
+      "question": "卸载 beta 后 launch reward 还会在吗？",
+      "discovered_topic": "uninstall_keep_rewards",
+      "count": 1,
+      "sources": [
+        "steam"
+      ],
+      "example_urls": [
+        "https://steamcommunity.com/app/2584270/discussions/2/564785528365536049/"
+      ],
+      "example_excerpt": "Since I finished the Beta, can I uninstall the game now and still collect the rewards when the game goes live?"
+    },
+    {
+      "question": "Why not just save the progress?",
+      "discovered_topic": "full_save_transfer",
+      "count": 1,
+      "sources": [
+        "steam"
+      ],
+      "example_urls": [
+        "https://steamcommunity.com/app/2584270/discussions/2/563659184402388065/"
+      ],
+      "example_excerpt": "Why not just save the progress? Very strange to me. Great game though, very excited."
+    },
+    {
+      "question": "Since there are some collectables in the prologue area, can we still play the prologue AND obtain the cosmetic reward by using the beta save?",
+      "discovered_topic": "prologue_skip",
+      "count": 1,
+      "sources": [
+        "steam"
+      ],
+      "example_urls": [
+        "https://steamcommunity.com/app/2584270/discussions/2/573793348713724413/"
+      ],
+      "example_excerpt": "Hello, I just finished the beta (need just to do one achievement and I'm done) and I was reading about the rewards in the full game. Since there are some collectables in the prologue area, can we still play the prologue AND obtain the cosme"
+    }
+  ],
+  "most_asked_questions": [
+    "Beta 存档/进度会带到正式版吗？",
+    "Beta 100% completion 有额外 launch reward 吗？",
+    "卸载 beta 后 launch reward 还会在吗？",
+    "Why not just save the progress?",
+    "Since there are some collectables in the prologue area, can we still play the prologue AND obtain the cosmetic reward by using the beta save?"
+  ],
+  "content_gaps": [
+    {
+      "player_question": "Beta 100% completion 有额外 launch reward 吗？",
+      "discovered_topic": "completion_bonus",
+      "evidence_count": 1,
+      "why_missing": "Existing carry-over page does not answer this player question.",
+      "kind": "related"
+    },
+    {
+      "player_question": "卸载 beta 后 launch reward 还会在吗？",
+      "discovered_topic": "uninstall_keep_rewards",
+      "evidence_count": 1,
+      "why_missing": "Existing carry-over page does not answer this player question.",
+      "kind": "related"
+    },
+    {
+      "player_question": "Since there are some collectables in the prologue area, can we still play the prologue AND obtain the cosmetic reward by using the beta save?",
+      "discovered_topic": "prologue_skip",
+      "evidence_count": 1,
+      "why_missing": "Existing carry-over page does not answer this player question.",
+      "kind": "related"
+    }
+  ],
+  "recommendation": {
+    "action": "EXPAND_EXISTING",
+    "reason": "Players are asking carry-over / rewards follow-ups that belong on the existing beta progress page but are not currently covered."
+  },
+  "filtered_examples": [
+    {
+      "source": "youtube",
+      "reason": "title_only",
+      "title": "Mortal Shell II New Open Beta Demo Play 30 Minutes to Claim Free Exclusive Flayed Harbinger Reward",
+      "excerpt": "Played about 10 minutes into the Mortal Shell II Open Beta that's now Live on Steam. After the intro gameplay starts around 4:11. Will play some more this evening to complete the demo playthrough. I expected the environm"
+    },
+    {
+      "source": "youtube",
+      "reason": "title_only",
+      "title": "Mortal Shell II New Open Beta Demo Play 30 Minutes to Claim Free Exclusive Flayed Harbinger Reward",
+      "excerpt": "Bro this game looks awesome im downloading the beta now to try it too man i signed thanks for this video bro"
+    },
+    {
+      "source": "youtube",
+      "reason": "title_only",
+      "title": "BIG Mortal Shell 2 UPDATES - Difficulty Changes, Shells Unlocks & Abilities, Beta Save Files + More!",
+      "excerpt": "Slayer's seal disables some while enabling others like it's description says"
+    },
+    {
+      "source": "youtube",
+      "reason": "title_only",
+      "title": "BIG Mortal Shell 2 UPDATES - Difficulty Changes, Shells Unlocks & Abilities, Beta Save Files + More!",
+      "excerpt": "Easiest pre order of my life after playing the beta. Can't wait."
+    },
+    {
+      "source": "youtube",
+      "reason": "title_only",
+      "title": "BIG Mortal Shell 2 UPDATES - Difficulty Changes, Shells Unlocks & Abilities, Beta Save Files + More!",
+      "excerpt": "Purchased the Devout Edition literally within 20 minutes of playing the beta."
+    },
+    {
+      "source": "youtube",
+      "reason": "title_only",
+      "title": "BIG Mortal Shell 2 UPDATES - Difficulty Changes, Shells Unlocks & Abilities, Beta Save Files + More!",
+      "excerpt": "Night mode sounds best to experience on a second play through as I will then be able to tell when I experience the new content."
+    },
+    {
+      "source": "youtube",
+      "reason": "title_only",
+      "title": "BIG Mortal Shell 2 UPDATES - Difficulty Changes, Shells Unlocks & Abilities, Beta Save Files + More!",
+      "excerpt": "Mortal Shell 1 is really good also"
+    },
+    {
+      "source": "youtube",
+      "reason": "title_only",
+      "title": "BIG Mortal Shell 2 UPDATES - Difficulty Changes, Shells Unlocks & Abilities, Beta Save Files + More!",
+      "excerpt": "I didn’t play the first one and played the PC beta out of curiosity when it was available. I was instantly hooked. I re-downloaded to do a second run a few days later lol"
+    }
+  ]
+}
