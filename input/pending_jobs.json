@@ -1,0 +1,37 @@
+{
+  "jobs": [
+    {
+      "job_id": "ms2-beta-progress-carry-over-20260814",
+      "game": "Mortal Shell II",
+      "topic": "beta save / beta rewards / progress carry-over",
+      "existing_page": "/mortal-shell-ii/beta-progress-carry-over/",
+      "opportunity_level": "HIGH",
+      "recommended_action": "RESEARCH_EXPAND_EXISTING",
+      "source_query": "mortal shell 2 beta rewards",
+      "related_queries": [
+        "beta rewards",
+        "beta carry over",
+        "beta progress carry over",
+        "does beta progress carry over",
+        "beta save",
+        "beta save file",
+        "beta reward",
+        "open beta rewards"
+      ],
+      "created_at": "2026-08-14T23:55:10+08:00"
+    },
+    {
+      "job_id": "au-console-20260814",
+      "game": "Approximately Up",
+      "topic": "ps5",
+      "existing_page": "/approximately-up/console/",
+      "opportunity_level": "HIGH",
+      "recommended_action": "RESEARCH_EXPAND_EXISTING",
+      "source_query": "approximately up ps5",
+      "related_queries": [
+        "ps5"
+      ],
+      "created_at": "2026-08-14T23:55:10+08:00"
+    }
+  ]
+}

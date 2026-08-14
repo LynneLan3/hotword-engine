@@ -1,8 +1,8 @@
 {
   "job_id": "ms2-beta-progress-carry-over-20260814",
   "status": "REVIEW",
-  "started_at": "2026-08-14T15:05:44+00:00",
-  "finished_at": "2026-08-14T15:09:30+00:00",
+  "started_at": "2026-08-14T16:10:56+00:00",
+  "finished_at": "2026-08-14T16:14:24+00:00",
   "recommendation": {
     "action": "EXPAND_EXISTING",
     "reason": "Players are asking carry-over / rewards follow-ups that belong on the existing beta progress page but are not currently covered."
