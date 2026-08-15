@@ -1428,6 +1428,29 @@ def dedupe_evidence(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+def make_review_summary(
+    *,
+    recommendation: dict[str, Any],
+    evidence: list[dict[str, Any]],
+    most_asked: list[str],
+) -> str:
+    """Short human-review blurb from existing recommendation + questions."""
+    action = str(recommendation.get("action") or "").strip()
+    reason = str(recommendation.get("reason") or "").strip()
+    parts: list[str] = []
+    if action and reason:
+        parts.append(f"{action}: {reason}")
+    elif reason:
+        parts.append(reason)
+    elif action:
+        parts.append(action)
+    asked = [str(q).strip() for q in most_asked if str(q).strip()][:3]
+    if asked:
+        parts.append("Top questions — " + " | ".join(asked))
+    parts.append(f"Evidence count: {len(evidence)}.")
+    return " ".join(parts)
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     game = args.game
     topic = args.topic
@@ -1488,6 +1511,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "steam": pack_source_counts(st_counts),
     }
 
+    most_asked = [c["question"] for c in clusters[:8]]
+    recommendation = {
+        "action": rec["action"],
+        "reason": rec["reason"],
+    }
     result = {
         "input": {
             "game": game,
@@ -1498,12 +1526,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "source_counts": source_counts,
         "evidence": evidence,
         "player_questions": clusters,
-        "most_asked_questions": [c["question"] for c in clusters[:8]],
+        "most_asked_questions": most_asked,
         "content_gaps": rec["content_gaps"],
-        "recommendation": {
-            "action": rec["action"],
-            "reason": rec["reason"],
-        },
+        "recommendation": recommendation,
+        "review_summary": make_review_summary(
+            recommendation=recommendation,
+            evidence=evidence,
+            most_asked=most_asked,
+        ),
         "filtered_examples": FILTER_EXAMPLES[:8],
     }
     return result
