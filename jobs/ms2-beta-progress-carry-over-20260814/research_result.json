@@ -4,18 +4,18 @@
     "topic": "beta save / beta rewards / progress carry-over",
     "existing_page": "/mortal-shell-ii/beta-progress-carry-over/"
   },
-  "run_at": "2026-08-14T16:14:24+00:00",
+  "run_at": "2026-08-14T16:31:27+00:00",
   "source_counts": {
     "youtube": {
-      "raw_candidates": 37,
+      "raw_candidates": 54,
       "valid_evidence": 3,
       "filtered": {
         "seo_description": 5,
-        "title_only": 23,
+        "title_only": 38,
         "livestream_intro": 3,
-        "low_info": 3
+        "low_info": 5
       },
-      "filtered_total": 34
+      "filtered_total": 51
     },
     "reddit": {
       "raw_candidates": 197,
@@ -93,16 +93,6 @@
       "relevance": 0.75
     },
     {
-      "source": "youtube",
-      "title": "This Soulslike Runs PERFECTLY on PS5 | Mortal Shell 2",
-      "url": "https://www.youtube.com/watch?v=04Iah42c0Pk",
-      "evidence": "#Mortalshell2beta #mortalshell2 #mortalshell2gameplay Mortal Shell 2’s Open Beta is live on Steam, PS5, and Xbox — but the “progress carries over” headlines floating around aren’t telling the whole story. Here’s exactly what transfers to the full game, what resets at launch, and everything else you need before August 20. What carries over: the Flayed Harbinger cosmetic and a permanent Prologue skip if you clear Marrow Keep. What doesn’t: your Shells, weapons, currency, and collectibles — all reset for balance. Also breaking down: Devout Edition early access (72 hours starting Aug 17), the sold",
-      "excerpt": "#Mortalshell2beta #mortalshell2 #mortalshell2gameplay Mortal Shell 2’s Open Beta is live on Steam, PS5, and Xbox — but the “progress carries over” headlines floating around aren’t telling the whole story. Here’s exactly what transfers to the full game, what resets at launch, and ",
-      "player_question": "",
-      "discovered_topic": "prologue_skip",
-      "relevance": 0.71
-    },
-    {
       "source": "reddit",
       "title": "Mortal Shell II Beta now available on PS5 and Xbox Series X|S!",
       "url": "https://www.reddit.com/r/MortalShell/comments/1vbqajp/mortal_shell_ii_beta_now_available_on_ps5_and/p18ovgv/",
@@ -174,12 +164,22 @@
     },
     {
       "source": "youtube",
-      "title": "This Soulslike Runs PERFECTLY on PS5 | Mortal Shell 2",
-      "url": "https://www.youtube.com/watch?v=04Iah42c0Pk",
-      "evidence": "So if you skip the prologue, do you miss out on all the items you would have collected? Seems counterintuitive if so.",
-      "excerpt": "So if you skip the prologue, do you miss out on all the items you would have collected? Seems counterintuitive if so.",
-      "player_question": "Skip prologue 会错过序章物品或资源吗？",
-      "discovered_topic": "prologue_skip",
+      "title": "The Complete Pre-Launch Preview - Mortal Shell 2 Guides, News & Updates",
+      "url": "https://www.youtube.com/watch?v=6amt8jslZ9o",
+      "evidence": "This is everything you could possibly need to know before the #mortalshell2 release, covering release dates & times for both launch and early access, what progress transfers from the beta, new and existing shells & weapons, as well as the games hidden easy and hard modes, and much more! Find the best deals in gaming & support the channel right here at Eneba: https://tinyurl.com/IAmWaved-Eneba Any purchases made using the affiliate link, means I make a small commission at no extra cost to you, thanks! __________________________ 💻 Discord ➔ https://discord.gg/2NfbjN8Dmb 📷 Instagram ➔ https://www",
+      "excerpt": "This is everything you could possibly need to know before the #mortalshell2 release, covering release dates & times for both launch and early access, what progress transfers from the beta, new and existing shells & weapons, as well as the games hidden easy and hard modes, and muc",
+      "player_question": "",
+      "discovered_topic": "inventory_reset",
+      "relevance": 0.44
+    },
+    {
+      "source": "youtube",
+      "title": "The Complete Pre-Launch Preview - Mortal Shell 2 Guides, News & Updates",
+      "url": "https://www.youtube.com/watch?v=6amt8jslZ9o",
+      "evidence": "I’m 100% replaying from start. Not sure if any beta trophies that were unlocked carry over but in any event I didn’t manage the Tar Golem on my beta run so time to lock in! Cheers",
+      "excerpt": "I’m 100% replaying from start. Not sure if any beta trophies that were unlocked carry over but in any event I didn’t manage the Tar Golem on my beta run so time to lock in! Cheers",
+      "player_question": "",
+      "discovered_topic": "completion_bonus",
       "relevance": 0.44
     },
     {
@@ -275,18 +275,6 @@
       "example_excerpt": "Why not just save the progress? Very strange to me. Great game though, very excited."
     },
     {
-      "question": "Skip prologue 会错过序章物品或资源吗？",
-      "discovered_topic": "prologue_skip",
-      "count": 1,
-      "sources": [
-        "youtube"
-      ],
-      "example_urls": [
-        "https://www.youtube.com/watch?v=04Iah42c0Pk"
-      ],
-      "example_excerpt": "So if you skip the prologue, do you miss out on all the items you would have collected? Seems counterintuitive if so."
-    },
-    {
       "question": "Since there are some collectables in the prologue area, can we still play the prologue AND obtain the cosmetic reward by using the beta save?",
       "discovered_topic": "prologue_skip",
       "count": 1,
@@ -304,7 +292,6 @@
     "Beta 100% completion 有额外 launch reward 吗？",
     "卸载 beta 后 launch reward 还会在吗？",
     "Why not just save the progress?",
-    "Skip prologue 会错过序章物品或资源吗？",
     "Since there are some collectables in the prologue area, can we still play the prologue AND obtain the cosmetic reward by using the beta save?"
   ],
   "content_gaps": [
@@ -350,18 +337,6 @@
     {
       "source": "youtube",
       "reason": "title_only",
-      "title": "This Soulslike Runs PERFECTLY on PS5 | Mortal Shell 2",
-      "excerpt": "I got stuck in the environment a couple times. But just turned off and on again and didn’t loose my gloom so no issues"
-    },
-    {
-      "source": "youtube",
-      "reason": "title_only",
-      "title": "This Soulslike Runs PERFECTLY on PS5 | Mortal Shell 2",
-      "excerpt": "well that sucks. i was getting ready to play the shit outta it and grind until launch. i already played 50 mins."
-    },
-    {
-      "source": "youtube",
-      "reason": "title_only",
       "title": "BIG Mortal Shell 2 UPDATES - Difficulty Changes, Shells Unlocks & Abilities, Beta Save Files + More!",
       "excerpt": "Slayer's seal disables some while enabling others like it's description says"
     },
@@ -382,6 +357,18 @@
       "reason": "title_only",
       "title": "BIG Mortal Shell 2 UPDATES - Difficulty Changes, Shells Unlocks & Abilities, Beta Save Files + More!",
       "excerpt": "Mortal Shell 1 is really good also"
+    },
+    {
+      "source": "youtube",
+      "reason": "low_info",
+      "title": "BIG Mortal Shell 2 UPDATES - Difficulty Changes, Shells Unlocks & Abilities, Beta Save Files + More!",
+      "excerpt": "It was awesome I’m buying"
+    },
+    {
+      "source": "youtube",
+      "reason": "title_only",
+      "title": "BIG Mortal Shell 2 UPDATES - Difficulty Changes, Shells Unlocks & Abilities, Beta Save Files + More!",
+      "excerpt": "Night mode sounds best to experience on a second play through as I will then be able to tell when I experience the new content."
     }
   ]
 }
