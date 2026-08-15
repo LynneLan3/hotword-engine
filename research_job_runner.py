@@ -88,7 +88,31 @@ def status_payload(
     return out
 
 
-def build_callback_body(status: dict[str, Any]) -> dict[str, Any]:
+def review_summary_from_result(result: dict[str, Any] | None) -> str:
+    """Prefer research_result.review_summary; fall back to recommendation.reason."""
+    if not isinstance(result, dict):
+        return ""
+    summary = str(result.get("review_summary") or "").strip()
+    if summary:
+        return summary
+    rec = result.get("recommendation")
+    if isinstance(rec, dict):
+        return str(rec.get("reason") or "").strip()
+    return ""
+
+
+def evidence_from_result(result: dict[str, Any] | None) -> list[Any]:
+    if not isinstance(result, dict):
+        return []
+    evidence = result.get("evidence")
+    return list(evidence) if isinstance(evidence, list) else []
+
+
+def build_callback_body(
+    status: dict[str, Any],
+    *,
+    result: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     job_id = str(status["job_id"]).strip()
     if status["status"] == "FAILED":
         return {
@@ -96,13 +120,16 @@ def build_callback_body(status: dict[str, Any]) -> dict[str, Any]:
             "status": "FAILED",
             "error": str(status.get("error") or "research_job_failed")[:300],
         }
-    return {
+    body: dict[str, Any] = {
         "job_id": job_id,
         "status": "REVIEW",
         "recommendation": recommendation_action(status.get("recommendation")),
         "evidence_count": int(status.get("evidence_count") or 0),
         "result_path": str(status.get("result_path") or relative_result_path(job_id)),
+        "review_summary": review_summary_from_result(result),
+        "evidence": evidence_from_result(result),
     }
+    return body
 
 
 def _http_exchange(
@@ -128,7 +155,11 @@ def _http_exchange(
         return exc.code, dict(exc.headers.items() if exc.headers else {}), exc.read() or b""
 
 
-def post_research_callback(status: dict[str, Any]) -> bool:
+def post_research_callback(
+    status: dict[str, Any],
+    *,
+    result: dict[str, Any] | None = None,
+) -> bool:
     """POST REVIEW/FAILED to Google Sheet callback. Never mutates local artifacts."""
     url = str(os.environ.get("RESEARCH_CALLBACK_URL") or "").strip()
     token = str(os.environ.get("RESEARCH_CALLBACK_TOKEN") or "").strip()
@@ -139,7 +170,7 @@ def post_research_callback(status: dict[str, Any]) -> bool:
         rr.log("Callback error    RESEARCH_CALLBACK_TOKEN is not set")
         return False
 
-    body = build_callback_body(status)
+    body = build_callback_body(status, result=result)
     body["token"] = token
     payload = json.dumps(body, ensure_ascii=False).encode("utf-8")
     headers = {
@@ -235,7 +266,7 @@ def run_job(job_path: Path) -> dict[str, Any]:
         write_json(status_path, finished)
         rr.log("Status           REVIEW  (waiting for human review)")
         rr.log(f"Wrote            {result_path}")
-        post_research_callback(finished)
+        post_research_callback(finished, result=result)
         return finished
     except Exception as exc:
         err = str(exc).strip() or exc.__class__.__name__
