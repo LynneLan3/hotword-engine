@@ -45,13 +45,30 @@ STEAM_COOKIE = (
 )
 YT_CLIENT = {"clientName": "WEB", "clientVersion": "2.20240815.00.00", "hl": "en", "gl": "US"}
 
+# Only confirmed per-game Steam App IDs. Never guess; never fall back to another game.
 STEAM_APP_IDS = {
-    "mortal shell ii": ["2584270"],
     "mortal shell 2": ["2584270"],
 }
 
 GAME_ALIASES = {
-    "mortal shell ii": ["mortal shell ii", "mortal shell 2", "mortalshell2", "mortal shell ii"],
+    "mortal shell 2": ["mortal shell 2", "mortal shell ii", "mortalshell2"],
+}
+
+# Distinctive markers used to reject cross-game contamination.
+# Keys are norm(game) owners; markers must not appear in other games' evidence.
+GAME_DISTINCTIVE_MARKERS: dict[str, tuple[str, ...]] = {
+    "mortal shell 2": (
+        "mortal shell 2",
+        "mortal shell ii",
+        "mortalshell2",
+        "flayed harbinger",
+        "marrow keep",
+        "2584270",
+    ),
+}
+
+STEAM_APP_OWNERS = {
+    "2584270": "mortal shell 2",
 }
 
 NOISE_ALIASES = (
@@ -75,8 +92,8 @@ REDDIT_SKIP_SUBS = (
     "gametrade",
 )
 
-# Evidence must hit at least one of these. Bare "beta" / "shells" / "progress" is not enough.
-CORE_TERMS = (
+# Mortal Shell II specialty — only applied when researching that game.
+MS2_CORE_TERMS = (
     "carry over",
     "carry-over",
     "carry on",
@@ -108,7 +125,7 @@ CORE_TERMS = (
     "30 minute",
 )
 
-STORE_BOILERPLATE = (
+MS2_STORE_BOILERPLATE = (
     "beta save progress will not carry over in full",
     "play the mortal shell ii open beta to unlock the flayed harbinger",
     "the mortal shell ii open beta grants access to the opening hours",
@@ -116,6 +133,60 @@ STORE_BOILERPLATE = (
     "grants access to the opening hours",
     "play the opening three hours of the game",
 )
+
+MS2_DIRECT_ANSWER_PHRASES = (
+    "will not carry",
+    "does not carry",
+    "doesn t carry",
+    "doesnt carry",
+    "reset at launch",
+    "save data will not transfer",
+    "progress does not carry",
+    "skip the prologue",
+    "skip prologue",
+    "flayed harbinger",
+    "30 minute",
+    "carry over to the full",
+    "carry over when",
+    "save transfer",
+    "save file carry",
+    "full reset at release",
+)
+
+MS2_TOPIC_RULES: list[tuple[str, tuple[str, ...]]] = [
+    ("cloud_save", ("cloud save", "cloud saves", "no cloud", "cross-device", "another pc", "laptop")),
+    ("uninstall_keep_rewards", ("uninstall", "delete the beta", "remove the beta", "lose our beta unlock")),
+    ("completion_bonus", ("100 percent", "100%", "completion of the beta", "full completion")),
+    ("playtime_threshold", ("30 minutes", "30 mins", "playtime", "play for at least")),
+    ("prologue_skip", ("prologue", "marrow keep", "skip the prologue", "skip prologue")),
+    ("beta_rewards", ("flayed harbinger", "harbinger", "cosmetic", "beta reward", "beta bonus", "unlock")),
+    ("inventory_reset", ("currency", "weapons", "shells", "collectibles", "inventory", "items reset")),
+    ("full_save_transfer", ("carry over", "carry on", "save transfer", "progress transfer", "save file", "beta save", "full reset", "start over")),
+    ("claim_process", ("how to claim", "claim at launch", "claim the")),
+    ("cross_platform", ("ps5", "xbox", "playstation", "cross platform", "cross-platform")),
+]
+
+MS2_PAGE_RELATED_TOPICS = {
+    "full_save_transfer",
+    "inventory_reset",
+    "beta_rewards",
+    "prologue_skip",
+    "claim_process",
+    "uninstall_keep_rewards",
+    "completion_bonus",
+    "playtime_threshold",
+    "cross_platform",
+}
+
+MS2_EXISTING_PAGE_FALLBACK = """
+Beta save progress does not carry over in full. Playing the Open Beta unlocks
+The Flayed Harbinger cosmetic at launch. Progressing beyond the Marrow Keep
+unlocks a Prologue-skip option. Currency, weapons, Shells, collectibles, and
+other discovered items reset. The skip is optional. Magdalena is not the
+stated requirement. Official copy does not publish a playtime threshold.
+Claim The Flayed Harbinger in the full game at launch on August 20, 2026.
+Tiel and other Shells reset. Save transfer is not the same as beta rewards.
+"""
 
 QUESTION_CUES = (
     "does ",
@@ -137,42 +208,6 @@ QUESTION_CUES = (
     "100%",
     "100 percent",
 )
-
-TOPIC_RULES: list[tuple[str, tuple[str, ...]]] = [
-    ("cloud_save", ("cloud save", "cloud saves", "no cloud", "cross-device", "another pc", "laptop")),
-    ("uninstall_keep_rewards", ("uninstall", "delete the beta", "remove the beta", "lose our beta unlock")),
-    ("completion_bonus", ("100 percent", "100%", "completion of the beta", "full completion")),
-    ("playtime_threshold", ("30 minutes", "30 mins", "playtime", "play for at least")),
-    ("prologue_skip", ("prologue", "marrow keep", "skip the prologue", "skip prologue")),
-    ("beta_rewards", ("flayed harbinger", "harbinger", "cosmetic", "beta reward", "beta bonus", "unlock")),
-    ("inventory_reset", ("currency", "weapons", "shells", "collectibles", "inventory", "items reset")),
-    ("full_save_transfer", ("carry over", "carry on", "save transfer", "progress transfer", "save file", "beta save", "full reset", "start over")),
-    ("claim_process", ("how to claim", "claim at launch", "claim the")),
-    ("cross_platform", ("ps5", "xbox", "playstation", "cross platform", "cross-platform")),
-]
-
-PAGE_RELATED_TOPICS = {
-    "full_save_transfer",
-    "inventory_reset",
-    "beta_rewards",
-    "prologue_skip",
-    "claim_process",
-    "uninstall_keep_rewards",
-    "completion_bonus",
-    "playtime_threshold",
-    "cross_platform",
-}
-
-# Fallback if the live existing page cannot be fetched.
-EXISTING_PAGE_FALLBACK = """
-Beta save progress does not carry over in full. Playing the Open Beta unlocks
-The Flayed Harbinger cosmetic at launch. Progressing beyond the Marrow Keep
-unlocks a Prologue-skip option. Currency, weapons, Shells, collectibles, and
-other discovered items reset. The skip is optional. Magdalena is not the
-stated requirement. Official copy does not publish a playtime threshold.
-Claim The Flayed Harbinger in the full game at launch on August 20, 2026.
-Tiel and other Shells reset. Save transfer is not the same as beta rewards.
-"""
 
 
 def now_iso() -> str:
@@ -238,19 +273,140 @@ def game_aliases(game: str) -> list[str]:
     return out
 
 
+def is_mortal_shell_ii(game: str) -> bool:
+    key = norm(game)
+    return key in {"mortal shell 2", "mortal shell ii", "mortalshell2"}
+
+
+def resolve_steam_appids(game: str, override: list[str] | None = None) -> list[str]:
+    """Return confirmed Steam App IDs only. Empty means Steam must be skipped."""
+    if override:
+        return [str(a).strip() for a in override if str(a).strip()]
+    return list(STEAM_APP_IDS.get(norm(game), []))
+
+
+def _unique_terms(items: list[str]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in items:
+        t = norm(item)
+        if not t or t in seen:
+            continue
+        seen.add(t)
+        out.append(t)
+    return tuple(out)
+
+
+def request_topic_terms(
+    game: str,
+    topic: str,
+    source_query: str = "",
+    related_queries: list[str] | None = None,
+) -> tuple[str, ...]:
+    """Topic / query terms bound to this research request (no other-game defaults)."""
+    parts: list[str] = []
+    for piece in re.split(r"[/,]| or ", topic or ""):
+        piece = piece.strip()
+        if piece:
+            parts.append(piece)
+    if source_query and str(source_query).strip():
+        parts.append(str(source_query).strip())
+    for q in related_queries or []:
+        if str(q).strip():
+            parts.append(str(q).strip())
+    # Light platform expansion only when the request itself is about platforms.
+    blob = norm(" ".join(parts))
+    if any(x in blob for x in ("ps5", "playstation", "console", "xbox")):
+        parts.extend(
+            ["ps5", "playstation", "playstation 5", "console", "xbox", "xbox series"]
+        )
+    return _unique_terms(parts)
+
+
+def core_terms_for(
+    game: str,
+    topic: str,
+    source_query: str = "",
+    related_queries: list[str] | None = None,
+) -> tuple[str, ...]:
+    terms = list(
+        request_topic_terms(game, topic, source_query, related_queries)
+    )
+    if is_mortal_shell_ii(game):
+        terms.extend(MS2_CORE_TERMS)
+    return _unique_terms(terms)
+
+
+def topic_rules_for(game: str, topic: str) -> list[tuple[str, tuple[str, ...]]]:
+    if is_mortal_shell_ii(game):
+        return list(MS2_TOPIC_RULES)
+    rules: list[tuple[str, tuple[str, ...]]] = []
+    topic_terms = request_topic_terms(game, topic)
+    if topic_terms:
+        rules.append(("topic_match", topic_terms))
+    blob = norm(topic)
+    if any(x in blob for x in ("ps5", "playstation", "console", "xbox")):
+        rules.append(
+            (
+                "cross_platform",
+                ("ps5", "xbox", "playstation", "console", "cross platform", "cross-platform"),
+            )
+        )
+    return rules
+
+
+def page_related_topics_for(game: str) -> set[str]:
+    if is_mortal_shell_ii(game):
+        return set(MS2_PAGE_RELATED_TOPICS)
+    return {"topic_match", "cross_platform"}
+
+
 def mentions_game(text: str, game: str) -> bool:
     n = norm(text)
     return any(alias in n for alias in game_aliases(game))
 
 
-def has_core_topic(text: str) -> bool:
-    n = norm(text)
-    return any(term in n for term in CORE_TERMS)
+def is_cross_game_contamination(text: str, url: str, game: str) -> bool:
+    """True when evidence clearly belongs to another known game."""
+    blob = norm(f"{text} {url}")
+    raw = f"{text} {url}".lower()
+    current_norm = {norm(a) for a in game_aliases(game)}
+
+    app_m = re.search(
+        r"(?:steamcommunity\.com|store\.steampowered\.com)/app/(\d+)", raw
+    )
+    if app_m:
+        owner = STEAM_APP_OWNERS.get(app_m.group(1))
+        if owner and norm(owner) not in current_norm:
+            return True
+
+    for owner_key, markers in GAME_DISTINCTIVE_MARKERS.items():
+        if owner_key in current_norm:
+            continue
+        if any(marker in blob or marker in raw for marker in markers):
+            return True
+    return False
 
 
-def is_store_boilerplate(text: str) -> bool:
+def has_core_topic(
+    text: str,
+    game: str = "",
+    topic: str = "",
+    source_query: str = "",
+    related_queries: list[str] | None = None,
+) -> bool:
     n = norm(text)
-    return any(p in n for p in STORE_BOILERPLATE)
+    terms = core_terms_for(game, topic, source_query, related_queries)
+    if not terms:
+        return False
+    return any(term in n for term in terms)
+
+
+def is_store_boilerplate(text: str, game: str = "") -> bool:
+    if not is_mortal_shell_ii(game):
+        return False
+    n = norm(text)
+    return any(p in n for p in MS2_STORE_BOILERPLATE)
 
 
 def is_player_voice(title: str, excerpt: str) -> bool:
@@ -283,42 +439,41 @@ def is_player_voice(title: str, excerpt: str) -> bool:
     return False
 
 
-def is_on_topic_question(text: str) -> bool:
-    if has_core_topic(text):
+def is_on_topic_question(
+    text: str,
+    game: str = "",
+    topic: str = "",
+    source_query: str = "",
+    related_queries: list[str] | None = None,
+) -> bool:
+    if has_core_topic(text, game, topic, source_query, related_queries):
         return True
     n = norm(text)
-    if "save" in n and "progress" in n:
-        return True
-    if "skip" in n and "prologue" in n:
-        return True
-    if "reward" in n and any(w in n for w in ("launch", "beta", "uninstall")):
-        return True
-    return False
+    if is_mortal_shell_ii(game):
+        if "save" in n and "progress" in n:
+            return True
+        if "skip" in n and "prologue" in n:
+            return True
+        if "reward" in n and any(w in n for w in ("launch", "beta", "uninstall")):
+            return True
+        return False
+    # Non-MS2: require overlap with this request's topic terms.
+    req = request_topic_terms(game, topic, source_query, related_queries)
+    return bool(req) and any(term in n for term in req)
 
 
-def is_direct_topic_answer(text: str) -> bool:
+def is_direct_topic_answer(
+    text: str,
+    game: str = "",
+    topic: str = "",
+    source_query: str = "",
+    related_queries: list[str] | None = None,
+) -> bool:
     n = norm(text)
-    return any(
-        p in n
-        for p in (
-            "will not carry",
-            "does not carry",
-            "doesn t carry",
-            "doesnt carry",
-            "reset at launch",
-            "save data will not transfer",
-            "progress does not carry",
-            "skip the prologue",
-            "skip prologue",
-            "flayed harbinger",
-            "30 minute",
-            "carry over to the full",
-            "carry over when",
-            "save transfer",
-            "save file carry",
-            "full reset at release",
-        )
-    )
+    if is_mortal_shell_ii(game):
+        return any(p in n for p in MS2_DIRECT_ANSWER_PHRASES)
+    req = request_topic_terms(game, topic, source_query, related_queries)
+    return bool(req) and any(term in n for term in req)
 
 
 FILTER_STATS: dict[str, dict[str, int]] = {}
@@ -387,7 +542,13 @@ def pack_source_counts(counts: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def classify_invalid_evidence(excerpt: str) -> str | None:
+def classify_invalid_evidence(
+    excerpt: str,
+    game: str = "",
+    topic: str = "",
+    source_query: str = "",
+    related_queries: list[str] | None = None,
+) -> str | None:
     """Body-only validity. Title relevance is not enough."""
     body = re.sub(r"\s+", " ", excerpt or "").strip()
     n = norm(body)
@@ -396,14 +557,19 @@ def classify_invalid_evidence(excerpt: str) -> str | None:
     if len(body) < 28 and "?" not in body:
         return "low_info"
     if any(p in n for p in ("ok thanks", "pretty bummed", "hope so")):
-        if not is_direct_topic_answer(body) and not is_on_topic_question(body):
+        if not is_direct_topic_answer(
+            body, game, topic, source_query, related_queries
+        ) and not is_on_topic_question(
+            body, game, topic, source_query, related_queries
+        ):
             return "low_info"
     if any(p in n for p in ("linux", "proton", "compatdata")):
         return "adjacent_tech"
     if "cloud save" in n and not any(
         p in n for p in ("full game", "at launch", "carry over", "full release")
     ):
-        return "adjacent_tech"
+        if is_mortal_shell_ii(game):
+            return "adjacent_tech"
     if any(p in n for p in ("fast travel", "beacon to beacon")):
         return "off_topic_chat"
     if any(
@@ -415,12 +581,16 @@ def classify_invalid_evidence(excerpt: str) -> str | None:
             "lot of stuff to do",
             "i thought the game ends",
         )
-    ) and not is_on_topic_question(body) and not is_direct_topic_answer(body):
+    ) and not is_on_topic_question(
+        body, game, topic, source_query, related_queries
+    ) and not is_direct_topic_answer(
+        body, game, topic, source_query, related_queries
+    ):
         return "off_topic_chat"
     if not (
-        has_core_topic(body)
-        or is_on_topic_question(body)
-        or is_direct_topic_answer(body)
+        has_core_topic(body, game, topic, source_query, related_queries)
+        or is_on_topic_question(body, game, topic, source_query, related_queries)
+        or is_direct_topic_answer(body, game, topic, source_query, related_queries)
     ):
         return "title_only"
     return None
@@ -431,7 +601,14 @@ def reddit_subreddit(url: str) -> str:
     return (m.group(1) if m else "").lower()
 
 
-def is_noise(text: str, game: str, url: str = "") -> bool:
+def is_noise(
+    text: str,
+    game: str,
+    url: str = "",
+    topic: str = "",
+    source_query: str = "",
+    related_queries: list[str] | None = None,
+) -> bool:
     n = norm(text)
     if "mortal kombat" in n and "mortal shell" not in n:
         return True
@@ -440,43 +617,57 @@ def is_noise(text: str, game: str, url: str = "") -> bool:
     sub = reddit_subreddit(url)
     if sub in REDDIT_SKIP_SUBS:
         return True
-    if "ama with" in n and not has_core_topic(text):
+    if "ama with" in n and not has_core_topic(
+        text, game, topic, source_query, related_queries
+    ):
         return True
     if not mentions_game(text, game):
-        if "steamcommunity.com" in url:
-            return False
+        # Steam forum pages are only treated as in-game when App ID was confirmed
+        # for this game (caller sets source_scoped). Without a game mention they
+        # are still noise for cross-posted / wrong-app text.
         return True
     return False
 
 
-def topic_terms(topic: str) -> list[str]:
-    extra = [
-        "beta", "save", "reward", "rewards", "progress", "carry", "carryover",
-        "transfer", "unlock", "bonus", "prologue", "marrow", "reset", "claim",
-        "flayed", "harbinger", "cloud",
-    ]
-    parts = [p.strip() for p in re.split(r"[/,]| or ", topic) if p.strip()]
-    terms = [norm(p) for p in parts]
-    for e in extra:
-        if e not in terms:
-            terms.append(e)
-    return [t for t in terms if t]
+def topic_terms(
+    topic: str,
+    game: str = "",
+    source_query: str = "",
+    related_queries: list[str] | None = None,
+) -> list[str]:
+    return list(request_topic_terms(game, topic, source_query, related_queries))
 
 
-def discover_topic(text: str) -> str:
+def discover_topic(
+    text: str,
+    game: str = "",
+    topic: str = "",
+) -> str:
     n = norm(text)
-    for name, kws in TOPIC_RULES:
+    for name, kws in topic_rules_for(game, topic):
         if any(kw in n for kw in kws):
             return name
-    if "save" in n or "progress" in n or "carry" in n:
-        return "full_save_transfer"
-    if "reward" in n or "unlock" in n:
-        return "beta_rewards"
+    if is_mortal_shell_ii(game):
+        if "save" in n or "progress" in n or "carry" in n:
+            return "full_save_transfer"
+        if "reward" in n or "unlock" in n:
+            return "beta_rewards"
     return "other"
 
 
-def relevance_score(text: str, game: str, topic: str, source_scoped: bool = False) -> float:
-    if not (has_core_topic(text) or is_on_topic_question(text) or is_direct_topic_answer(text)):
+def relevance_score(
+    text: str,
+    game: str,
+    topic: str,
+    source_scoped: bool = False,
+    source_query: str = "",
+    related_queries: list[str] | None = None,
+) -> float:
+    if not (
+        has_core_topic(text, game, topic, source_query, related_queries)
+        or is_on_topic_question(text, game, topic, source_query, related_queries)
+        or is_direct_topic_answer(text, game, topic, source_query, related_queries)
+    ):
         return 0.0
     n = norm(text)
     score = 0.0
@@ -484,11 +675,12 @@ def relevance_score(text: str, game: str, topic: str, source_scoped: bool = Fals
         score += 0.35
     else:
         return 0.0
-    hits = sum(1 for term in CORE_TERMS if term in n)
+    terms = core_terms_for(game, topic, source_query, related_queries)
+    hits = sum(1 for term in terms if term in n)
     score += min(0.45, hits * 0.09)
     if is_player_voice("", text):
         score += 0.15
-    if is_store_boilerplate(text) and not is_player_voice("", text):
+    if is_store_boilerplate(text, game) and not is_player_voice("", text):
         score -= 0.05
     if any(bad in n for bad in ("performance", "fps", "frame gen", "steam machine")):
         score -= 0.2
@@ -508,13 +700,16 @@ def clean_question_sentence(text: str) -> str:
     return text.strip()
 
 
-def extract_question_sentences(body: str) -> list[str]:
+def extract_question_sentences(
+    body: str,
+    game: str = "",
+) -> list[str]:
     found: list[str] = []
     for piece in re.findall(r"[^.!?\n][^.!?\n]{8,}\?", body or ""):
         piece = clean_question_sentence(piece)
         if not (12 <= len(piece) <= 240):
             continue
-        if is_store_boilerplate(piece):
+        if is_store_boilerplate(piece, game):
             continue
         if piece.lower().startswith("originally posted"):
             continue
@@ -548,8 +743,9 @@ def pick_best_question(questions: list[str]) -> str:
     return max(questions, key=score)
 
 
-def compact_player_question(question: str) -> str:
+def compact_player_question(question: str, game: str = "") -> str:
     n = norm(question)
+    game_label = game.strip() or "Game"
     if re.search(r"100\s*%|100 percent|completion of the beta", n) and any(
         w in n for w in ("reward", "get anything", "bonus", "unlock", "at launch")
     ):
@@ -559,7 +755,7 @@ def compact_player_question(question: str) -> str:
     ):
         return "卸载 beta 后 launch reward 还会在吗？"
     if "cloud save" in n:
-        return "Mortal Shell II beta 有 cloud save 吗？"
+        return f"{game_label} beta 有 cloud save 吗？"
     if any(w in n for w in ("skip the prologue", "skip prologue", "skipping the prologue")) and any(
         w in n for w in ("miss", "collect", "gloom", "coin", "item", "still play")
     ):
@@ -592,21 +788,34 @@ def compact_player_question(question: str) -> str:
     return cleaned[:160]
 
 
-def extract_question(title: str, excerpt: str) -> str:
+def extract_question(
+    title: str,
+    excerpt: str,
+    game: str = "",
+    topic: str = "",
+    source_query: str = "",
+    related_queries: list[str] | None = None,
+) -> str:
     """Extract a reviewable player question from evidence body only.
 
     Source titles are never spliced in. Unrelated questions are dropped.
     """
     del title  # kept in signature for call sites; do not use
     body = excerpt or ""
-    questions = extract_question_sentences(body)
-    on_topic = [q for q in questions if is_on_topic_question(q)]
+    questions = extract_question_sentences(body, game)
+    on_topic = [
+        q
+        for q in questions
+        if is_on_topic_question(q, game, topic, source_query, related_queries)
+    ]
     if on_topic:
-        return compact_player_question(pick_best_question(on_topic))
+        return compact_player_question(pick_best_question(on_topic), game)
     if questions:
         return ""
-    if is_player_voice("", body) and has_core_topic(body):
-        return compact_player_question(body[:240])
+    if is_player_voice("", body) and has_core_topic(
+        body, game, topic, source_query, related_queries
+    ):
+        return compact_player_question(body[:240], game)
     return ""
 
 
@@ -666,33 +875,53 @@ def evidence_item(
     topic: str,
     source_scoped: bool = False,
     match_on_excerpt: bool = False,
+    source_query: str = "",
+    related_queries: list[str] | None = None,
 ) -> tuple[dict[str, Any] | None, str | None]:
     excerpt = re.sub(r"\s+", " ", excerpt).strip()
     title = re.sub(r"\s+", " ", title).strip()
     if len(excerpt) < 12 and len(title) < 12:
         return None, "low_info"
-    invalid = classify_invalid_evidence(excerpt)
+    if is_cross_game_contamination(f"{title} {excerpt}", url, game):
+        record_filter(source, "cross_game", excerpt, title)
+        return None, "cross_game"
+    invalid = classify_invalid_evidence(
+        excerpt, game, topic, source_query, related_queries
+    )
     if invalid:
         record_filter(source, invalid, excerpt, title)
         return None, invalid
     blob = excerpt if match_on_excerpt else f"{title} {excerpt}"
-    if is_noise(blob, game, url) and not source_scoped:
+    if is_noise(
+        blob, game, url, topic, source_query, related_queries
+    ) and not source_scoped:
         record_filter(source, "noise", excerpt, title)
         return None, "noise"
-    if not has_core_topic(excerpt) and not is_on_topic_question(excerpt) and not is_direct_topic_answer(excerpt):
+    if not has_core_topic(
+        excerpt, game, topic, source_query, related_queries
+    ) and not is_on_topic_question(
+        excerpt, game, topic, source_query, related_queries
+    ) and not is_direct_topic_answer(
+        excerpt, game, topic, source_query, related_queries
+    ):
         record_filter(source, "title_only", excerpt, title)
         return None, "title_only"
+    # match_on_excerpt only controls scoring text — never implies game scope.
     rel = relevance_score(
         excerpt if (match_on_excerpt or source_scoped) else blob,
         game,
         topic,
-        source_scoped=source_scoped or match_on_excerpt,
+        source_scoped=source_scoped,
+        source_query=source_query,
+        related_queries=related_queries,
     )
     if rel < 0.42:
         record_filter(source, "low_relevance", excerpt, title)
         return None, "low_relevance"
-    discovered = discover_topic(excerpt)
-    question = extract_question(title, excerpt)
+    discovered = discover_topic(excerpt, game, topic)
+    question = extract_question(
+        title, excerpt, game, topic, source_query, related_queries
+    )
     return {
         "source": source,
         "title": title[:240],
@@ -716,6 +945,8 @@ def take_evidence(
     topic: str,
     source_scoped: bool = False,
     match_on_excerpt: bool = False,
+    source_query: str = "",
+    related_queries: list[str] | None = None,
 ) -> None:
     key = candidate_key(source, url, excerpt)
     if key in bucket["seen"]:
@@ -729,6 +960,8 @@ def take_evidence(
         topic,
         source_scoped=source_scoped,
         match_on_excerpt=match_on_excerpt,
+        source_query=source_query,
+        related_queries=related_queries,
     )
     count_source_item(bucket, key, reason)
     if item:
@@ -868,7 +1101,7 @@ def youtube_desc_has_unique_claim(desc: str) -> bool:
     return any(term in n for term in YT_UNIQUE_CLAIMS)
 
 
-def classify_youtube_desc_noise(title: str, desc: str) -> str | None:
+def classify_youtube_desc_noise(title: str, desc: str, game: str = "") -> str | None:
     blob = f"{title} {desc}".lower()
     n = norm(blob)
     if any(
@@ -877,7 +1110,7 @@ def classify_youtube_desc_noise(title: str, desc: str) -> str | None:
     ):
         return "livestream_intro"
     if "livestream" in blob or "live stream" in blob:
-        if is_store_boilerplate(desc) or "grants access to the opening hours" in n:
+        if is_store_boilerplate(desc, game) or "grants access to the opening hours" in n:
             return "livestream_intro"
         if "welcome to mortal shell" in n:
             return "livestream_intro"
@@ -887,7 +1120,7 @@ def classify_youtube_desc_noise(title: str, desc: str) -> str | None:
     if hashtags >= 4 or stuffing or seo_phrases:
         return "seo_description"
     if (
-        (is_store_boilerplate(desc) or "grants access to the opening hours" in n)
+        (is_store_boilerplate(desc, game) or "grants access to the opening hours" in n)
         and not youtube_desc_has_unique_claim(desc)
         and not is_player_voice("", desc)
     ):
@@ -895,14 +1128,49 @@ def classify_youtube_desc_noise(title: str, desc: str) -> str | None:
     return None
 
 
-def collect_youtube(game: str, topic: str) -> tuple[list[dict[str, Any]], dict[str, int]]:
-    queries = [
-        f"{game} beta save",
-        f"{game} beta rewards",
-        f"{game} progress carry over",
-        f"{game} save transfer",
-        f"{game} open beta bonuses",
-    ]
+def build_search_queries(
+    game: str,
+    topic: str,
+    source_query: str = "",
+    related_queries: list[str] | None = None,
+) -> list[str]:
+    queries: list[str] = [f"{game} {topic}".strip()]
+    if source_query and str(source_query).strip():
+        queries.append(str(source_query).strip())
+        queries.append(f"{game} {source_query}".strip())
+    for q in related_queries or []:
+        qs = str(q).strip()
+        if qs:
+            queries.append(f"{game} {qs}")
+    if is_mortal_shell_ii(game):
+        queries.extend(
+            [
+                f"{game} beta save",
+                f"{game} beta rewards",
+                f"{game} progress carry over",
+                f"{game} save transfer",
+                f"{game} open beta bonuses",
+            ]
+        )
+    # de-dupe preserve order
+    seen: set[str] = set()
+    out: list[str] = []
+    for q in queries:
+        key = norm(q)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(q)
+    return out
+
+
+def collect_youtube(
+    game: str,
+    topic: str,
+    source_query: str = "",
+    related_queries: list[str] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    queries = build_search_queries(game, topic, source_query, related_queries)
     seen_ids: set[str] = set()
     candidates: list[dict[str, str]] = []
     for q in queries:
@@ -923,7 +1191,18 @@ def collect_youtube(game: str, topic: str) -> tuple[list[dict[str, Any]], dict[s
     ranked: list[tuple[float, dict[str, str]]] = []
     for v in candidates:
         blob = f"{v['title']} {v['desc']}"
-        ranked.append((relevance_score(blob, game, topic), v))
+        ranked.append(
+            (
+                relevance_score(
+                    blob,
+                    game,
+                    topic,
+                    source_query=source_query,
+                    related_queries=related_queries,
+                ),
+                v,
+            )
+        )
     ranked.sort(key=lambda x: x[0], reverse=True)
 
     opened = 0
@@ -938,10 +1217,12 @@ def collect_youtube(game: str, topic: str) -> tuple[list[dict[str, Any]], dict[s
         except Exception:
             pass
         blob = f"{title} {desc}"
-        if not has_core_topic(blob) and score < 0.42:
+        if not has_core_topic(
+            blob, game, topic, source_query, related_queries
+        ) and score < 0.42:
             continue
         opened += 1
-        noise = classify_youtube_desc_noise(title, desc)
+        noise = classify_youtube_desc_noise(title, desc, game)
         if noise:
             count_source_item(
                 bucket,
@@ -949,7 +1230,7 @@ def collect_youtube(game: str, topic: str) -> tuple[list[dict[str, Any]], dict[s
                 noise,
             )
             log(f"  YouTube desc filtered ({noise}): {title[:80]}")
-        elif has_core_topic(blob):
+        elif has_core_topic(blob, game, topic, source_query, related_queries):
             take_evidence(
                 bucket,
                 evidence,
@@ -959,6 +1240,8 @@ def collect_youtube(game: str, topic: str) -> tuple[list[dict[str, Any]], dict[s
                 desc or title,
                 game,
                 topic,
+                source_query=source_query,
+                related_queries=related_queries,
             )
         try:
             comments = youtube_comments(v["id"])
@@ -966,6 +1249,7 @@ def collect_youtube(game: str, topic: str) -> tuple[list[dict[str, Any]], dict[s
             log(f"  YouTube comments failed ({v['id']}): {e}")
             comments = []
         for c in comments:
+            # Comments are not game-scoped; require game/topic binding.
             take_evidence(
                 bucket,
                 evidence,
@@ -975,8 +1259,9 @@ def collect_youtube(game: str, topic: str) -> tuple[list[dict[str, Any]], dict[s
                 c,
                 game,
                 topic,
-                source_scoped=True,
                 match_on_excerpt=True,
+                source_query=source_query,
+                related_queries=related_queries,
             )
         time.sleep(0.35)
     yt_counts = finalize_source_counts(bucket)
@@ -1033,11 +1318,31 @@ def reddit_post_rss(permalink_url: str) -> list[dict[str, str]]:
     return parse_atom(data)
 
 
-def collect_reddit(game: str, topic: str) -> tuple[list[dict[str, Any]], dict[str, int]]:
-    queries = [
-        "mortal shell 2 beta save OR rewards OR carry OR cloud",
-        "mortal shell ii beta progress carry over",
-    ]
+def collect_reddit(
+    game: str,
+    topic: str,
+    source_query: str = "",
+    related_queries: list[str] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    queries = build_search_queries(game, topic, source_query, related_queries)
+    if is_mortal_shell_ii(game):
+        queries.extend(
+            [
+                "mortal shell 2 beta save OR rewards OR carry OR cloud",
+                "mortal shell ii beta progress carry over",
+            ]
+        )
+        # de-dupe again
+        seen_q: set[str] = set()
+        deduped: list[str] = []
+        for q in queries:
+            key = norm(q)
+            if key in seen_q:
+                continue
+            seen_q.add(key)
+            deduped.append(q)
+        queries = deduped
+
     posts: dict[str, dict[str, str]] = {}
     for q in queries:
         try:
@@ -1059,15 +1364,30 @@ def collect_reddit(game: str, topic: str) -> tuple[list[dict[str, Any]], dict[st
     bucket = new_source_bucket()
     ranked = sorted(
         posts.values(),
-        key=lambda p: relevance_score(f"{p['title']} {p['content']}", game, topic),
+        key=lambda p: relevance_score(
+            f"{p['title']} {p['content']}",
+            game,
+            topic,
+            source_query=source_query,
+            related_queries=related_queries,
+        ),
         reverse=True,
     )
     kept = 0
     for post in ranked:
         blob = f"{post['title']} {post['content']}"
-        if not has_core_topic(blob):
+        if not has_core_topic(blob, game, topic, source_query, related_queries):
             continue
-        if relevance_score(blob, game, topic) < 0.42:
+        if (
+            relevance_score(
+                blob,
+                game,
+                topic,
+                source_query=source_query,
+                related_queries=related_queries,
+            )
+            < 0.42
+        ):
             continue
         take_evidence(
             bucket,
@@ -1079,6 +1399,8 @@ def collect_reddit(game: str, topic: str) -> tuple[list[dict[str, Any]], dict[st
             game,
             topic,
             match_on_excerpt=True,
+            source_query=source_query,
+            related_queries=related_queries,
         )
         kept += 1
         if kept >= 8:
@@ -1099,6 +1421,8 @@ def collect_reddit(game: str, topic: str) -> tuple[list[dict[str, Any]], dict[st
                 game,
                 topic,
                 match_on_excerpt=True,
+                source_query=source_query,
+                related_queries=related_queries,
             )
         time.sleep(2.5)
     return evidence, finalize_source_counts(bucket)
@@ -1157,17 +1481,50 @@ def parse_steam_topic(html: str, url: str) -> tuple[str, str, list[str]]:
     return title, op, comments
 
 
-def collect_steam(game: str, topic: str, appids: list[str]) -> tuple[list[dict[str, Any]], dict[str, int]]:
+def collect_steam(
+    game: str,
+    topic: str,
+    appids: list[str],
+    source_query: str = "",
+    related_queries: list[str] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    if not appids:
+        log("  Steam skipped: no confirmed Steam App ID for this game")
+        return [], {
+            "raw": 0,
+            "valid": 0,
+            "filtered": {"no_steam_appid": 1},
+            "filtered_total": 1,
+        }
+
     headers = {"Cookie": STEAM_COOKIE, "Referer": "https://steamcommunity.com/"}
     topic_urls: list[str] = []
     seen: set[str] = set()
-    search_queries = [
-        "beta save carry reward",
-        "progress carried",
-        "uninstall beta unlock",
-        "cloud save",
-        "100% beta",
-    ]
+    search_queries = list(
+        request_topic_terms(game, topic, source_query, related_queries)
+    )[:6]
+    if is_mortal_shell_ii(game):
+        search_queries.extend(
+            [
+                "beta save carry reward",
+                "progress carried",
+                "uninstall beta unlock",
+                "cloud save",
+                "100% beta",
+            ]
+        )
+    if not search_queries:
+        search_queries = [topic or game]
+    # unique
+    sq_seen: set[str] = set()
+    sq_out: list[str] = []
+    for q in search_queries:
+        key = norm(q)
+        if not key or key in sq_seen:
+            continue
+        sq_seen.add(key)
+        sq_out.append(q)
+    search_queries = sq_out
     list_paths: list[str] = []
 
     for appid in appids:
@@ -1214,7 +1571,9 @@ def collect_steam(game: str, topic: str, appids: list[str]) -> tuple[list[dict[s
         if "/discussions/" not in final or final.rstrip("/").endswith("/discussions"):
             continue
         title, op, comments = parse_steam_topic(html.decode("utf-8", "ignore"), final)
-        if not has_core_topic(f"{title} {op}"):
+        if not has_core_topic(
+            f"{title} {op}", game, topic, source_query, related_queries
+        ):
             continue
         take_evidence(
             bucket,
@@ -1227,6 +1586,8 @@ def collect_steam(game: str, topic: str, appids: list[str]) -> tuple[list[dict[s
             topic,
             source_scoped=True,
             match_on_excerpt=True,
+            source_query=source_query,
+            related_queries=related_queries,
         )
         for c in comments:
             take_evidence(
@@ -1240,6 +1601,8 @@ def collect_steam(game: str, topic: str, appids: list[str]) -> tuple[list[dict[s
                 topic,
                 source_scoped=True,
                 match_on_excerpt=True,
+                source_query=source_query,
+                related_queries=related_queries,
             )
         time.sleep(0.25)
     return evidence, finalize_source_counts(bucket)
@@ -1249,16 +1612,22 @@ def collect_steam(game: str, topic: str, appids: list[str]) -> tuple[list[dict[s
 # Existing page + clustering
 # ---------------------------------------------------------------------------
 
-def fetch_existing_page(path: str) -> str:
-    url = "https://mortal-shell-ii.vercel.app" + (path if path.startswith("/") else "/" + path)
-    try:
-        data, _ = http_get(url)
-        text = strip_html(data.decode("utf-8", "ignore"))
-        if len(text) > 200:
-            return text
-    except Exception as e:
-        log(f"  Live page fetch failed: {e}")
-    return EXISTING_PAGE_FALLBACK
+def fetch_existing_page(path: str, game: str = "") -> str:
+    # Only MS2 has a known live host + specialty fallback in this runner.
+    if is_mortal_shell_ii(game) or "/mortal-shell-ii/" in (path or ""):
+        url = "https://mortal-shell-ii.vercel.app" + (
+            path if path.startswith("/") else "/" + path
+        )
+        try:
+            data, _ = http_get(url)
+            text = strip_html(data.decode("utf-8", "ignore"))
+            if len(text) > 200:
+                return text
+        except Exception as e:
+            log(f"  Live page fetch failed: {e}")
+        return MS2_EXISTING_PAGE_FALLBACK
+    log("  Existing page fallback skipped (no game-specific host configured)")
+    return ""
 
 
 def page_covers(topic_name: str, page_text: str) -> bool:
@@ -1360,15 +1729,17 @@ def recommend(
     clusters: list[dict[str, Any]],
     page_text: str,
     evidence_n: int,
+    game: str = "",
 ) -> dict[str, Any]:
     gaps: list[dict[str, Any]] = []
     related_gap_n = 0
     orthogonal_gap_n = 0
+    related_topics = page_related_topics_for(game)
     for c in clusters:
         covered = question_on_page(c["question"], c["discovered_topic"], page_text)
         if covered:
             continue
-        kind = "related" if c["discovered_topic"] in PAGE_RELATED_TOPICS else "orthogonal"
+        kind = "related" if c["discovered_topic"] in related_topics else "orthogonal"
         if kind == "related":
             related_gap_n += c["count"]
         else:
@@ -1380,8 +1751,12 @@ def recommend(
                 "evidence_count": c["count"],
                 "why_missing": (
                     "Existing carry-over page does not answer this player question."
-                    if kind == "related"
-                    else "This question sits next to the topic but is not the same page intent."
+                    if kind == "related" and is_mortal_shell_ii(game)
+                    else (
+                        "Existing page does not answer this player question."
+                        if kind == "related"
+                        else "This question sits next to the topic but is not the same page intent."
+                    )
                 ),
                 "kind": kind,
             }
@@ -1392,10 +1767,16 @@ def recommend(
         reason = "Too few on-topic evidence items to justify a content change."
     elif related_gap_n >= 2:
         action = "EXPAND_EXISTING"
-        reason = (
-            "Players are asking carry-over / rewards follow-ups that belong on the "
-            "existing beta progress page but are not currently covered."
-        )
+        if is_mortal_shell_ii(game):
+            reason = (
+                "Players are asking carry-over / rewards follow-ups that belong on the "
+                "existing beta progress page but are not currently covered."
+            )
+        else:
+            reason = (
+                "Players are asking follow-ups that belong on the existing page "
+                "but are not currently covered."
+            )
     elif orthogonal_gap_n >= 4 and related_gap_n == 0:
         action = "NEW_CONTENT"
         reason = "Dominant unanswered questions are a separate topic from the existing page."
@@ -1404,7 +1785,11 @@ def recommend(
         reason = "Collected questions are already covered by the existing page."
     else:
         action = "EXPAND_EXISTING"
-        reason = "There are unanswered follow-ups adjacent to the existing carry-over page."
+        reason = (
+            "There are unanswered follow-ups adjacent to the existing carry-over page."
+            if is_mortal_shell_ii(game)
+            else "There are unanswered follow-ups adjacent to the existing page."
+        )
 
     return {
         "action": action,
@@ -1451,22 +1836,66 @@ def make_review_summary(
     return " ".join(parts)
 
 
+def filter_final_evidence(
+    items: list[dict[str, Any]],
+    game: str,
+) -> list[dict[str, Any]]:
+    """Hard safety net: drop evidence that is not bound to the current game."""
+    kept: list[dict[str, Any]] = []
+    confirmed_appids = set(resolve_steam_appids(game))
+    for item in items:
+        title = str(item.get("title") or "")
+        evidence = str(item.get("evidence") or "")
+        excerpt = str(item.get("excerpt") or "")
+        url = str(item.get("url") or "")
+        blob = f"{title} {evidence} {excerpt}"
+        if is_cross_game_contamination(blob, url, game):
+            record_filter(
+                str(item.get("source") or "unknown"),
+                "cross_game",
+                blob,
+                title,
+            )
+            continue
+        on_confirmed_steam = any(f"/app/{appid}/" in url for appid in confirmed_appids)
+        if not mentions_game(blob, game) and not on_confirmed_steam:
+            record_filter(
+                str(item.get("source") or "unknown"),
+                "wrong_game",
+                blob,
+                title,
+            )
+            continue
+        kept.append(item)
+    return kept
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     game = args.game
     topic = args.topic
     existing_page = args.existing_page
-    appids = args.steam_appid or STEAM_APP_IDS.get(norm(game), [])
-    if not appids:
-        appids = ["2584270"]
+    source_query = str(getattr(args, "source_query", None) or "").strip()
+    related_raw = getattr(args, "related_queries", None) or []
+    if isinstance(related_raw, str):
+        related_queries = [q.strip() for q in related_raw.split(",") if q.strip()]
+    else:
+        related_queries = [str(q).strip() for q in related_raw if str(q).strip()]
+
+    appids = resolve_steam_appids(game, getattr(args, "steam_appid", None))
 
     log(f"Research Runner  game={game!r}  topic={topic!r}")
     log(f"Existing page    {existing_page}")
-    log(f"Steam appids     {appids}")
+    if source_query:
+        log(f"Source query     {source_query}")
+    if appids:
+        log(f"Steam appids     {appids}")
+    else:
+        log("Steam appids     (none — Steam source will be skipped)")
     reset_filter_log()
 
     if args.reuse:
         prev = json.loads(Path(args.reuse).read_text(encoding="utf-8"))
-        evidence = prev.get("evidence") or []
+        evidence = filter_final_evidence(prev.get("evidence") or [], game)
         yt_counts = {
             "raw": prev.get("source_counts", {}).get("youtube", {}).get("raw_candidates", 0),
             "valid": prev.get("source_counts", {}).get("youtube", {}).get("valid_evidence", 0),
@@ -1488,22 +1917,30 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         log("Reusing stored evidence; skipping live collection")
     else:
         log("\n[1/4] YouTube")
-        yt_items, yt_counts = collect_youtube(game, topic)
+        yt_items, yt_counts = collect_youtube(
+            game, topic, source_query, related_queries
+        )
         log(f"  raw={yt_counts['raw']} valid={yt_counts['valid']} filtered_total={yt_counts['filtered_total']}")
 
         log("\n[2/4] Reddit")
-        rd_items, rd_counts = collect_reddit(game, topic)
+        rd_items, rd_counts = collect_reddit(
+            game, topic, source_query, related_queries
+        )
         log(f"  raw={rd_counts['raw']} valid={rd_counts['valid']} filtered_total={rd_counts['filtered_total']}")
 
         log("\n[3/4] Steam Discussions")
-        st_items, st_counts = collect_steam(game, topic, appids)
+        st_items, st_counts = collect_steam(
+            game, topic, appids, source_query, related_queries
+        )
         log(f"  raw={st_counts['raw']} valid={st_counts['valid']} filtered_total={st_counts['filtered_total']}")
         evidence = dedupe_evidence(yt_items + rd_items + st_items)
 
+    evidence = filter_final_evidence(evidence, game)
+
     log("\n[4/4] Cluster + recommend")
-    page_text = fetch_existing_page(existing_page)
+    page_text = fetch_existing_page(existing_page, game)
     clusters = cluster_questions(evidence)
-    rec = recommend(clusters, page_text, len(evidence))
+    rec = recommend(clusters, page_text, len(evidence), game)
 
     source_counts = {
         "youtube": pack_source_counts(yt_counts),
@@ -1551,6 +1988,16 @@ def main() -> int:
         default="/mortal-shell-ii/beta-progress-carry-over/",
     )
     parser.add_argument("--steam-appid", action="append", default=None)
+    parser.add_argument(
+        "--source-query",
+        default="",
+        help="Optional GSC source query for topic binding",
+    )
+    parser.add_argument(
+        "--related-queries",
+        default="",
+        help="Optional comma-separated related queries",
+    )
     parser.add_argument("--out", default=str(OUT_DEFAULT))
     parser.add_argument(
         "--reuse",

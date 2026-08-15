@@ -2,7 +2,7 @@
 """Minimal Research Job wrapper around research_runner.py.
 
 Takes one GSC content-opportunity job, runs the existing Research Runner,
-leaves artifacts for human review, and POSTs REVIEW/FAILED back to the
+leaves artifacts, and POSTs REVIEW / WATCH / FAILED back to the
 Google Sheet Research Job callback endpoint.
 
 No database, queue, API, dashboard, site edits, or articles.
@@ -63,6 +63,22 @@ def recommendation_action(recommendation: Any) -> str:
     return str(recommendation or "").strip()
 
 
+def resolve_finished_status(
+    *,
+    evidence_count: int,
+    recommendation: Any,
+) -> str:
+    """Map a successful research result to REVIEW or WATCH.
+
+    WATCH + 0 evidence → no human-review queue.
+    Anything else successful → REVIEW (human review with evidence).
+    """
+    action = recommendation_action(recommendation).upper()
+    if int(evidence_count or 0) == 0 and action == "WATCH":
+        return "WATCH"
+    return "REVIEW"
+
+
 def status_payload(
     job: dict[str, Any],
     *,
@@ -114,11 +130,25 @@ def build_callback_body(
     result: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     job_id = str(status["job_id"]).strip()
-    if status["status"] == "FAILED":
+    status_enum = str(status.get("status") or "").strip().upper()
+    if status_enum == "FAILED":
         return {
             "job_id": job_id,
             "status": "FAILED",
             "error": str(status.get("error") or "research_job_failed")[:300],
+        }
+    if status_enum == "WATCH":
+        # No evidence payload — Apps Script must not write「研究审核」.
+        return {
+            "job_id": job_id,
+            "status": "WATCH",
+            "recommendation": recommendation_action(status.get("recommendation"))
+            or "WATCH",
+            "evidence_count": int(status.get("evidence_count") or 0),
+            "result_path": str(
+                status.get("result_path") or relative_result_path(job_id)
+            ),
+            "review_summary": review_summary_from_result(result),
         }
     body: dict[str, Any] = {
         "job_id": job_id,
@@ -160,7 +190,7 @@ def post_research_callback(
     *,
     result: dict[str, Any] | None = None,
 ) -> bool:
-    """POST REVIEW/FAILED to Google Sheet callback. Never mutates local artifacts."""
+    """POST REVIEW/WATCH/FAILED to Google Sheet callback. Never mutates local artifacts."""
     url = str(os.environ.get("RESEARCH_CALLBACK_URL") or "").strip()
     token = str(os.environ.get("RESEARCH_CALLBACK_TOKEN") or "").strip()
     if not url:
@@ -249,22 +279,32 @@ def run_job(job_path: Path) -> dict[str, Any]:
             topic=job["topic"],
             existing_page=job["existing_page"],
             steam_appid=None,
+            source_query=str(job.get("source_query") or "").strip(),
+            related_queries=list(job.get("related_queries") or []),
             out=str(result_path),
             reuse=None,
         )
         result = rr.run(args)
         write_json(result_path, result)
+        evidence_count = len(result.get("evidence") or [])
+        finished_status = resolve_finished_status(
+            evidence_count=evidence_count,
+            recommendation=result.get("recommendation"),
+        )
         finished = status_payload(
             job,
-            status="REVIEW",
+            status=finished_status,
             started_at=started_at,
             finished_at=rr.now_iso(),
             recommendation=result.get("recommendation"),
-            evidence_count=len(result.get("evidence") or []),
+            evidence_count=evidence_count,
             result_path=rel_result,
         )
         write_json(status_path, finished)
-        rr.log("Status           REVIEW  (waiting for human review)")
+        if finished_status == "WATCH":
+            rr.log("Status           WATCH  (insufficient evidence — no human review)")
+        else:
+            rr.log("Status           REVIEW  (waiting for human review)")
         rr.log(f"Wrote            {result_path}")
         post_research_callback(finished, result=result)
         return finished
@@ -301,7 +341,7 @@ def main() -> int:
         rr.log(f"Job file not found: {job_path}")
         return 2
     status = run_job(job_path)
-    return 0 if status["status"] == "REVIEW" else 1
+    return 0 if status["status"] in {"REVIEW", "WATCH"} else 1
 
 
 if __name__ == "__main__":
