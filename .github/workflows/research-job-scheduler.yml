@@ -29,3 +29,74 @@ jobs:
           RESEARCH_CALLBACK_URL: ${{ secrets.RESEARCH_CALLBACK_URL }}
           RESEARCH_CALLBACK_TOKEN: ${{ secrets.RESEARCH_CALLBACK_TOKEN }}
         run: python3 run_next_research_job.py
+
+      - name: Check for research job outputs
+        id: research_outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          status="$(git status --porcelain -- jobs/ || true)"
+          if [ -z "$status" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No new research outputs under jobs/; skip artifact upload"
+            exit 0
+          fi
+
+          echo "Detected changes under jobs/:"
+          printf '%s\n' "$status"
+
+          dirs_file="$(mktemp)"
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            path="${line:3}"
+            if [[ "$path" == *" -> "* ]]; then
+              path="${path##* -> }"
+            fi
+            path="${path#\"}"
+            path="${path%\"}"
+            case "$path" in
+              jobs/*/*|jobs/*)
+                job_id="${path#jobs/}"
+                job_id="${job_id%%/*}"
+                if [ -z "$job_id" ] || [ "$job_id" = "$path" ]; then
+                  echo "ERROR: unexpected path under jobs/: $path" >&2
+                  exit 1
+                fi
+                printf 'jobs/%s\n' "$job_id" >> "$dirs_file"
+                ;;
+              *)
+                echo "ERROR: unexpected path under jobs/: $path" >&2
+                exit 1
+                ;;
+            esac
+          done <<< "$status"
+
+          unique="$(sort -u "$dirs_file")"
+          rm -f "$dirs_file"
+          n="$(printf '%s\n' "$unique" | sed '/^$/d' | wc -l | tr -d ' ')"
+
+          if [ "$n" -eq 0 ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No job directories resolved; skip artifact upload"
+          elif [ "$n" -eq 1 ]; then
+            job_dir="$unique"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "job_dir=$job_dir" >> "$GITHUB_OUTPUT"
+            echo "Single changed job dir: $job_dir"
+          else
+            echo "ERROR: multiple job directories changed; refusing to mix artifacts:" >&2
+            printf '%s\n' "$unique" >&2
+            exit 1
+          fi
+
+      - name: Upload research results artifact
+        if: steps.research_outputs.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-results-${{ github.run_id }}
+          path: |
+            ${{ steps.research_outputs.outputs.job_dir }}/job.json
+            ${{ steps.research_outputs.outputs.job_dir }}/status.json
+            ${{ steps.research_outputs.outputs.job_dir }}/research_result.json
+          retention-days: 30
+          if-no-files-found: error
