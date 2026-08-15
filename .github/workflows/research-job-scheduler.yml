@@ -29,3 +29,27 @@ jobs:
           RESEARCH_CALLBACK_URL: ${{ secrets.RESEARCH_CALLBACK_URL }}
           RESEARCH_CALLBACK_TOKEN: ${{ secrets.RESEARCH_CALLBACK_TOKEN }}
         run: python3 run_next_research_job.py
+
+      - name: Check for research job outputs
+        id: research_outputs
+        run: |
+          if [ -n "$(git status --porcelain -- jobs/)" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "jobs/ has uncommitted research outputs; will upload artifact"
+            git status --porcelain -- jobs/
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No new research outputs under jobs/; skip artifact upload"
+          fi
+
+      - name: Upload research results artifact
+        if: steps.research_outputs.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-results-${{ github.run_id }}
+          path: |
+            jobs/**/job.json
+            jobs/**/status.json
+            jobs/**/research_result.json
+          retention-days: 30
+          if-no-files-found: error
