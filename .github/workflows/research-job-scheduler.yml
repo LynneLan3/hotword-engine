@@ -25,6 +25,8 @@ jobs:
           python-version: '3.12'
 
       - name: Run next pending research job
+        id: research_job
+        continue-on-error: true
         env:
           RESEARCH_CALLBACK_URL: ${{ secrets.RESEARCH_CALLBACK_URL }}
           RESEARCH_CALLBACK_TOKEN: ${{ secrets.RESEARCH_CALLBACK_TOKEN }}
@@ -100,3 +102,9 @@ jobs:
             ${{ steps.research_outputs.outputs.job_dir }}/research_result.json
           retention-days: 30
           if-no-files-found: error
+
+      - name: Propagate research job failure
+        if: steps.research_job.outcome == 'failure'
+        run: |
+          echo "Research job failed; artifacts have been preserved."
+          exit 1
