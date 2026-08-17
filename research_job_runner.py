@@ -306,8 +306,10 @@ def run_job(job_path: Path) -> dict[str, Any]:
         else:
             rr.log("Status           REVIEW  (waiting for human review)")
         rr.log(f"Wrote            {result_path}")
-        post_research_callback(finished, result=result)
-        return finished
+        callback_ok = post_research_callback(finished, result=result)
+        finished_out = dict(finished)
+        finished_out["callback_ok"] = callback_ok
+        return finished_out
     except Exception as exc:
         err = str(exc).strip() or exc.__class__.__name__
         rr.log(f"Research Job failed: {err}")
@@ -321,8 +323,23 @@ def run_job(job_path: Path) -> dict[str, Any]:
             error=err[:300],
         )
         write_json(status_path, failed)
-        post_research_callback(failed)
-        return failed
+        callback_ok = post_research_callback(failed)
+        failed_out = dict(failed)
+        failed_out["callback_ok"] = callback_ok
+        return failed_out
+
+
+def exit_code_from_run(status: dict[str, Any]) -> int:
+    """REVIEW/WATCH succeed only when Sheet callback succeeds.
+
+    FAILED is always non-zero. Local artifacts are not deleted on callback failure.
+    """
+    if not isinstance(status, dict):
+        return 1
+    if status.get("callback_ok") is False:
+        return 1
+    st = str(status.get("status") or "").strip().upper()
+    return 0 if st in {"REVIEW", "WATCH"} else 1
 
 
 def main() -> int:
@@ -341,7 +358,7 @@ def main() -> int:
         rr.log(f"Job file not found: {job_path}")
         return 2
     status = run_job(job_path)
-    return 0 if status["status"] in {"REVIEW", "WATCH"} else 1
+    return exit_code_from_run(status)
 
 
 if __name__ == "__main__":

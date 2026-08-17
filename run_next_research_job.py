@@ -42,7 +42,7 @@ def main() -> int:
     print(f"Wrote {job_path}")
 
     status = rjr.run_job(job_path)
-    return 0 if status.get("status") in {"REVIEW", "WATCH"} else 1
+    return rjr.exit_code_from_run(status)
 
 
 if __name__ == "__main__":
