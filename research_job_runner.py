@@ -191,6 +191,18 @@ def post_research_callback(
     result: dict[str, Any] | None = None,
 ) -> bool:
     """POST REVIEW/WATCH/FAILED to Google Sheet callback. Never mutates local artifacts."""
+    body = build_callback_body(status, result=result)
+    return post_callback_body(body)
+
+
+def post_callback_body(body: dict[str, Any]) -> bool:
+    """POST JSON body to Apps Script callback endpoint.
+
+    Reuses the exact HTTP behavior from post_research_callback:
+    - Uses RESEARCH_CALLBACK_URL / RESEARCH_CALLBACK_TOKEN
+    - Handles Apps Script 302 redirect Location with GET
+    - Expects response JSON with { ok: true }
+    """
     url = str(os.environ.get("RESEARCH_CALLBACK_URL") or "").strip()
     token = str(os.environ.get("RESEARCH_CALLBACK_TOKEN") or "").strip()
     if not url:
@@ -200,8 +212,10 @@ def post_research_callback(
         rr.log("Callback error    RESEARCH_CALLBACK_TOKEN is not set")
         return False
 
-    body = build_callback_body(status, result=result)
+    # IMPORTANT: never mutate artifacts with token — only include token in HTTP payload.
+    body = dict(body or {})
     body["token"] = token
+
     payload = json.dumps(body, ensure_ascii=False).encode("utf-8")
     headers = {
         "Content-Type": "application/json; charset=utf-8",
@@ -242,7 +256,9 @@ def post_research_callback(
             err = parsed.get("error") if isinstance(parsed, dict) else text
             rr.log(f"Callback error    {err}")
             return False
-        rr.log(f"Callback          OK  HTTP {code}  status={body['status']}")
+        rr.log(
+            f"Callback          OK  HTTP {code}  status={str(body.get('status') or body.get('execution_status') or '')}"
+        )
         return True
     except Exception as exc:
         rr.log(f"Callback error    {exc}")
