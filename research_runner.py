@@ -48,10 +48,16 @@ YT_CLIENT = {"clientName": "WEB", "clientVersion": "2.20240815.00.00", "hl": "en
 # Only confirmed per-game Steam App IDs. Never guess; never fall back to another game.
 STEAM_APP_IDS = {
     "mortal shell 2": ["2584270"],
+    "agefield high rock the school": ["3562580"],
 }
 
 GAME_ALIASES = {
     "mortal shell 2": ["mortal shell 2", "mortal shell ii", "mortalshell2"],
+    "agefield high rock the school": [
+        "agefield high rock the school",
+        "agefield high",
+        "agefield",
+    ],
 }
 
 # Distinctive markers used to reject cross-game contamination.
@@ -65,10 +71,17 @@ GAME_DISTINCTIVE_MARKERS: dict[str, tuple[str, ...]] = {
         "marrow keep",
         "2584270",
     ),
+    "agefield high rock the school": (
+        "agefield high rock the school",
+        "agefield high",
+        "agefield",
+        "3562580",
+    ),
 }
 
 STEAM_APP_OWNERS = {
     "2584270": "mortal shell 2",
+    "3562580": "agefield high rock the school",
 }
 
 NOISE_ALIASES = (
