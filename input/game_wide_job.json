@@ -1,0 +1,22 @@
+{
+  "job_id": "game-wide-ms2-20260821",
+  "job_type": "GAME_WIDE_SOCIAL_DISCOVERY",
+  "research_type": "DEMAND_DISCOVERY",
+  "site": "Mortal Shell II",
+  "game": "Mortal Shell II",
+  "discovery_scope": {
+    "scope": "GAME_WIDE",
+    "lookback_hours": 24
+  },
+  "seed_terms": [
+    "Mortal Shell II",
+    "Mortal Shell 2"
+  ],
+  "source_families_requested": [
+    "COMMUNITY",
+    "VIDEO"
+  ],
+  "created_at": "2026-08-21T10:37:50+08:00",
+  "site_key": "Mortal Shell II",
+  "game_name": "Mortal Shell II"
+}

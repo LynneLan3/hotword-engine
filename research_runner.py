@@ -561,6 +561,7 @@ def classify_invalid_evidence(
     topic: str = "",
     source_query: str = "",
     related_queries: list[str] | None = None,
+    game_wide: bool = False,
 ) -> str | None:
     """Body-only validity. Title relevance is not enough."""
     body = re.sub(r"\s+", " ", excerpt or "").strip()
@@ -568,7 +569,8 @@ def classify_invalid_evidence(
     if re.match(r"originally posted by\b", n):
         return "quote_shell"
     if len(body) < 28 and "?" not in body:
-        return "low_info"
+        if not (game_wide and mentions_game(body, game)):
+            return "low_info"
     if any(p in n for p in ("ok thanks", "pretty bummed", "hope so")):
         if not is_direct_topic_answer(
             body, game, topic, source_query, related_queries
@@ -601,7 +603,8 @@ def classify_invalid_evidence(
     ):
         return "off_topic_chat"
     if not (
-        has_core_topic(body, game, topic, source_query, related_queries)
+        (game_wide and mentions_game(body, game))
+        or has_core_topic(body, game, topic, source_query, related_queries)
         or is_on_topic_question(body, game, topic, source_query, related_queries)
         or is_direct_topic_answer(body, game, topic, source_query, related_queries)
     ):
@@ -890,6 +893,7 @@ def evidence_item(
     match_on_excerpt: bool = False,
     source_query: str = "",
     related_queries: list[str] | None = None,
+    game_wide: bool = False,
 ) -> tuple[dict[str, Any] | None, str | None]:
     excerpt = re.sub(r"\s+", " ", excerpt).strip()
     title = re.sub(r"\s+", " ", title).strip()
@@ -898,8 +902,11 @@ def evidence_item(
     if is_cross_game_contamination(f"{title} {excerpt}", url, game):
         record_filter(source, "cross_game", excerpt, title)
         return None, "cross_game"
+    # GAME_WIDE: classify on title+excerpt so mentions_game can find the game name
+    # in title when excerpt is just Reddit RSS metadata ("submitted by ...").
+    classify_body = f"{title} {excerpt}" if game_wide else excerpt
     invalid = classify_invalid_evidence(
-        excerpt, game, topic, source_query, related_queries
+        classify_body, game, topic, source_query, related_queries, game_wide=game_wide
     )
     if invalid:
         record_filter(source, invalid, excerpt, title)
@@ -910,7 +917,7 @@ def evidence_item(
     ) and not source_scoped:
         record_filter(source, "noise", excerpt, title)
         return None, "noise"
-    if not has_core_topic(
+    if not game_wide and not has_core_topic(
         excerpt, game, topic, source_query, related_queries
     ) and not is_on_topic_question(
         excerpt, game, topic, source_query, related_queries
@@ -920,17 +927,21 @@ def evidence_item(
         record_filter(source, "title_only", excerpt, title)
         return None, "title_only"
     # match_on_excerpt only controls scoring text — never implies game scope.
-    rel = relevance_score(
-        excerpt if (match_on_excerpt or source_scoped) else blob,
-        game,
-        topic,
-        source_scoped=source_scoped,
-        source_query=source_query,
-        related_queries=related_queries,
-    )
-    if rel < 0.42:
-        record_filter(source, "low_relevance", excerpt, title)
-        return None, "low_relevance"
+    if game_wide:
+        # GAME_WIDE: no topic → skip relevance scoring, gate on mentions_game only
+        rel = 0.8
+    else:
+        rel = relevance_score(
+            excerpt if (match_on_excerpt or source_scoped) else blob,
+            game,
+            topic,
+            source_scoped=source_scoped,
+            source_query=source_query,
+            related_queries=related_queries,
+        )
+        if rel < 0.42:
+            record_filter(source, "low_relevance", excerpt, title)
+            return None, "low_relevance"
     discovered = discover_topic(excerpt, game, topic)
     question = extract_question(
         title, excerpt, game, topic, source_query, related_queries
@@ -960,6 +971,7 @@ def take_evidence(
     match_on_excerpt: bool = False,
     source_query: str = "",
     related_queries: list[str] | None = None,
+    game_wide: bool = False,
 ) -> None:
     key = candidate_key(source, url, excerpt)
     if key in bucket["seen"]:
@@ -975,6 +987,7 @@ def take_evidence(
         match_on_excerpt=match_on_excerpt,
         source_query=source_query,
         related_queries=related_queries,
+        game_wide=game_wide,
     )
     count_source_item(bucket, key, reason)
     if item:
@@ -1141,12 +1154,43 @@ def classify_youtube_desc_noise(title: str, desc: str, game: str = "") -> str | 
     return None
 
 
+_GAME_WIDE_YOUTUBE_FAMILIES = (
+    "guide",
+    "how to",
+    "boss",
+    "weapon",
+    "location",
+    "shell",
+    "trophy",
+    "achievement",
+    "farm",
+    "upgrade",
+    "build",
+    "tips",
+)
+
+
 def build_search_queries(
     game: str,
     topic: str,
     source_query: str = "",
     related_queries: list[str] | None = None,
+    game_wide: bool = False,
 ) -> list[str]:
+    if game_wide:
+        queries: list[str] = [game]
+        for family in _GAME_WIDE_YOUTUBE_FAMILIES:
+            queries.append(f"{game} {family}")
+        # de-dupe preserve order
+        seen: set[str] = set()
+        out: list[str] = []
+        for q in queries:
+            key = norm(q)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            out.append(q)
+        return out
     queries: list[str] = [f"{game} {topic}".strip()]
     if source_query and str(source_query).strip():
         queries.append(str(source_query).strip())
@@ -1182,8 +1226,10 @@ def collect_youtube(
     topic: str,
     source_query: str = "",
     related_queries: list[str] | None = None,
+    game_wide: bool = False,
+    max_opened: int = 10,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
-    queries = build_search_queries(game, topic, source_query, related_queries)
+    queries = build_search_queries(game, topic, source_query, related_queries, game_wide=game_wide)
     seen_ids: set[str] = set()
     candidates: list[dict[str, str]] = []
     for q in queries:
@@ -1220,7 +1266,7 @@ def collect_youtube(
 
     opened = 0
     for score, v in ranked:
-        if opened >= 10:
+        if opened >= max_opened:
             break
         title, desc = v["title"], v["desc"]
         try:
@@ -1256,10 +1302,13 @@ def collect_youtube(
                 source_query=source_query,
                 related_queries=related_queries,
             )
-        try:
-            comments = youtube_comments(v["id"])
-        except Exception as e:
-            log(f"  YouTube comments failed ({v['id']}): {e}")
+        if not game_wide:
+            try:
+                comments = youtube_comments(v["id"])
+            except Exception as e:
+                log(f"  YouTube comments failed ({v['id']}): {e}")
+                comments = []
+        else:
             comments = []
         for c in comments:
             # Comments are not game-scoped; require game/topic binding.
@@ -1315,11 +1364,11 @@ def parse_atom(xml_bytes: bytes) -> list[dict[str, str]]:
     return out
 
 
-def reddit_search_rss(query: str) -> list[dict[str, str]]:
+def reddit_search_rss(query: str, retries: int = 3) -> list[dict[str, str]]:
     url = "https://www.reddit.com/search.rss?" + urllib.parse.urlencode(
         {"q": query, "sort": "relevance", "t": "year"}
     )
-    data, _ = http_get(url, {"Accept": "application/atom+xml,application/xml;q=0.9"})
+    data, _ = http_get(url, {"Accept": "application/atom+xml,application/xml;q=0.9"}, retries=retries)
     return parse_atom(data)
 
 
@@ -1336,32 +1385,43 @@ def collect_reddit(
     topic: str,
     source_query: str = "",
     related_queries: list[str] | None = None,
+    game_wide: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
-    queries = build_search_queries(game, topic, source_query, related_queries)
-    if is_mortal_shell_ii(game):
-        queries.extend(
-            [
-                "mortal shell 2 beta save OR rewards OR carry OR cloud",
-                "mortal shell ii beta progress carry over",
-            ]
-        )
-        # de-dupe again
-        seen_q: set[str] = set()
-        deduped: list[str] = []
-        for q in queries:
-            key = norm(q)
-            if key in seen_q:
-                continue
-            seen_q.add(key)
-            deduped.append(q)
-        queries = deduped
+    if game_wide:
+        # Use base game name (no version number) to catch both "II" and "2" posts
+        base_name = game.split(" II")[0].split(" 2")[0] if " II" in game or " 2" in game else game
+        queries = [f"{base_name} help OR guide OR build OR weapon"]
+        reddit_retries = 0
+    else:
+        queries = build_search_queries(game, topic, source_query, related_queries)
+        reddit_retries = 3
+        if is_mortal_shell_ii(game):
+            queries.extend(
+                [
+                    "mortal shell 2 beta save OR rewards OR carry OR cloud",
+                    "mortal shell ii beta progress carry over",
+                ]
+            )
+            # de-dupe again
+            seen_q: set[str] = set()
+            deduped: list[str] = []
+            for q in queries:
+                key = norm(q)
+                if key in seen_q:
+                    continue
+                seen_q.add(key)
+                deduped.append(q)
+            queries = deduped
 
     posts: dict[str, dict[str, str]] = {}
     for q in queries:
         try:
-            found = reddit_search_rss(q)
+            found = reddit_search_rss(q, retries=reddit_retries)
         except Exception as e:
             log(f"  Reddit search failed ({q}): {e}")
+            if game_wide:
+                log(f"  Reddit degraded, skipping remaining queries")
+                break
             time.sleep(6)
             continue
         for p in found:
@@ -1371,27 +1431,32 @@ def collect_reddit(
             if reddit_subreddit(url) in REDDIT_SKIP_SUBS:
                 continue
             posts[url] = p
-        time.sleep(4)
+        if not game_wide:
+            time.sleep(4)
 
     evidence: list[dict[str, Any]] = []
     bucket = new_source_bucket()
-    ranked = sorted(
-        posts.values(),
-        key=lambda p: relevance_score(
-            f"{p['title']} {p['content']}",
-            game,
-            topic,
-            source_query=source_query,
-            related_queries=related_queries,
-        ),
-        reverse=True,
-    )
+    if game_wide:
+        # GAME_WIDE: no topic → skip relevance ranking, use insertion order
+        ranked = list(posts.values())
+    else:
+        ranked = sorted(
+            posts.values(),
+            key=lambda p: relevance_score(
+                f"{p['title']} {p['content']}",
+                game,
+                topic,
+                source_query=source_query,
+                related_queries=related_queries,
+            ),
+            reverse=True,
+        )
     kept = 0
     for post in ranked:
         blob = f"{post['title']} {post['content']}"
-        if not has_core_topic(blob, game, topic, source_query, related_queries):
+        if not game_wide and not has_core_topic(blob, game, topic, source_query, related_queries):
             continue
-        if (
+        if not game_wide and (
             relevance_score(
                 blob,
                 game,
@@ -1401,6 +1466,9 @@ def collect_reddit(
             )
             < 0.42
         ):
+            continue
+        # GAME_WIDE: gate on mentions_game only (is_noise already checks this)
+        if game_wide and not mentions_game(blob, game):
             continue
         take_evidence(
             bucket,
@@ -1414,10 +1482,14 @@ def collect_reddit(
             match_on_excerpt=True,
             source_query=source_query,
             related_queries=related_queries,
+            game_wide=game_wide,
         )
         kept += 1
         if kept >= 8:
             break
+        if game_wide:
+            # GAME_WIDE: title-only discovery, skip thread enrichment
+            continue
         try:
             thread = reddit_post_rss(post["url"])
         except Exception as e:
@@ -1436,6 +1508,7 @@ def collect_reddit(
                 match_on_excerpt=True,
                 source_query=source_query,
                 related_queries=related_queries,
+                game_wide=game_wide,
             )
         time.sleep(2.5)
     return evidence, finalize_source_counts(bucket)

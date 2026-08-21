@@ -1,0 +1,15 @@
+{
+  "job_id": "social-ms2-20260820",
+  "job_type": "GAME_WIDE_SOCIAL_DISCOVERY",
+  "status": "COMPLETED",
+  "finished_at": "2026-08-20T09:46:00+00:00",
+  "result_path": "jobs/social-ms2-20260820/game_wide_social_result.json",
+  "evidence_count": 8,
+  "cluster_count": 7,
+  "decision_counts": {
+    "NEW": 0,
+    "EXPAND": 1,
+    "WATCH": 3,
+    "IGNORE": 3
+  }
+}

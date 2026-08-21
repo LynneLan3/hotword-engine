@@ -1,0 +1,418 @@
+{
+  "job_id": "social-ms2-20260820",
+  "job_type": "GAME_WIDE_SOCIAL_DISCOVERY",
+  "site_key": "ms2",
+  "game_name": "Mortal Shell II",
+  "aliases": [
+    "Mortal Shell 2"
+  ],
+  "lookback_hours": 48,
+  "status": "COMPLETED",
+  "run_at": "2026-08-20T09:46:00+00:00",
+  "source_counts": {
+    "reddit": 0,
+    "steam": 9,
+    "youtube": 3
+  },
+  "source_failures": {
+    "reddit": "reddit timed out after 90s"
+  },
+  "evidence_count": 8,
+  "clusters": [
+    {
+      "topic_key": "skip-prologue",
+      "topic": "How do I skip the prologue?",
+      "intent": "TASK",
+      "representative_questions": [
+        "How do I skip the prologue?"
+      ],
+      "evidence_count": 2,
+      "source_families": [
+        "COMMUNITY",
+        "VIDEO"
+      ],
+      "providers": [
+        "steam",
+        "youtube"
+      ],
+      "freshness_score": 50,
+      "engagement_score": 16,
+      "task_intent_score": 79,
+      "evidence": [
+        {
+          "provider": "youtube",
+          "source_family": "VIDEO",
+          "title": "Mortal Shell II – Do This Before Launch! Unlock the Exclusive Skin & Skip the Prologue",
+          "text": "Unlock the exclusive Flayed Harbinger skin before Mortal Shell II launches! Simply download the free Mortal Shell II Open Beta and play for at least 30 minutes. The exclusive cosmetic skin will become available in the full game at launch. Important: • Use the same platform accoun",
+          "snippet": "Unlock the exclusive Flayed Harbinger skin before Mortal Shell II launches! Simply download the free Mortal Shell II Open Beta and play for at least 30 minutes. The exclusive cosmetic skin will become available in the full game at launch. Important: • Use the same platform accoun",
+          "url": "https://www.youtube.com/watch?v=sixRYR3HyiM",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "",
+          "relevance": 0.8,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        },
+        {
+          "provider": "steam",
+          "source_family": "COMMUNITY",
+          "title": "Beta Savegame + reward skin not carrying over",
+          "text": "They only let me skip the prologue and gave me a bit of loot, enough to reach level 4. None of my progress carried over, the map is locked again, even though I explored it all in the beta.",
+          "snippet": "They only let me skip the prologue and gave me a bit of loot, enough to reach level 4. None of my progress carried over, the map is locked again, even though I explored it all in the beta.",
+          "url": "https://steamcommunity.com/app/2584270/discussions/0/418424310691123465/",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "",
+          "relevance": 0.53,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        }
+      ],
+      "gsc_match": {
+        "status": "PRESENT",
+        "query": {
+          "query": "mortal shell 2 skip prologue",
+          "clicks": 0,
+          "impressions": 30,
+          "position": 8.8,
+          "page_url": "/mortal-shell-ii/skip-prologue/"
+        },
+        "score": 8
+      },
+      "existing_page_match": {
+        "status": "MATCHED",
+        "page": {
+          "url": "/mortal-shell-ii/skip-prologue/",
+          "title": "How to Skip the Prologue in Mortal Shell 2"
+        },
+        "score": 10
+      },
+      "intervention_match": {
+        "recent_intervention": false
+      },
+      "decision": "EXPAND",
+      "reason": "Existing page is matched, but social evidence shows an uncovered task subproblem."
+    },
+    {
+      "topic_key": "20th-acces-available-early-include-like",
+      "topic": "Or does early access not include such a perk, like it’s only available from the 20th?",
+      "intent": "TASK",
+      "representative_questions": [
+        "Or does early access not include such a perk, like it’s only available from the 20th?"
+      ],
+      "evidence_count": 1,
+      "source_families": [
+        "COMMUNITY"
+      ],
+      "providers": [
+        "steam"
+      ],
+      "freshness_score": 50,
+      "engagement_score": 8,
+      "task_intent_score": 79,
+      "evidence": [
+        {
+          "provider": "steam",
+          "source_family": "COMMUNITY",
+          "title": "Skip the prologue and skin.",
+          "text": "I completed the beta, even got all the achievements, and today when I logged into the game, I didn’t find the option to skip the prologue and the skin. Or does early access not include such a perk, like it’s only available from the 20th?",
+          "snippet": "I completed the beta, even got all the achievements, and today when I logged into the game, I didn’t find the option to skip the prologue and the skin. Or does early access not include such a perk, like it’s only available from the 20th?",
+          "url": "https://steamcommunity.com/app/2584270/discussions/0/418424310691140696/",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "",
+          "relevance": 0.59,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        }
+      ],
+      "gsc_match": {
+        "status": "ABSENT",
+        "query": {},
+        "score": 0
+      },
+      "existing_page_match": {
+        "status": "NONE",
+        "page": {},
+        "score": 0
+      },
+      "intervention_match": {
+        "recent_intervention": false
+      },
+      "decision": "WATCH",
+      "reason": "Social signal exists but needs stronger confirmation before NEW."
+    },
+    {
+      "topic_key": "asking-create-file-me-not-save",
+      "topic": "I create second save file ( New Game ) and not asking me to skip?",
+      "intent": "TASK",
+      "representative_questions": [
+        "I create second save file ( New Game ) and not asking me to skip?"
+      ],
+      "evidence_count": 1,
+      "source_families": [
+        "COMMUNITY"
+      ],
+      "providers": [
+        "steam"
+      ],
+      "freshness_score": 50,
+      "engagement_score": 8,
+      "task_intent_score": 79,
+      "evidence": [
+        {
+          "provider": "steam",
+          "source_family": "COMMUNITY",
+          "title": "I create second save file ( New Game ) and not asking me to skip? I need to play from the beginning?",
+          "text": "Did you delete the beta? It seems that if you delete it it removes the beta rewards.",
+          "snippet": "Did you delete the beta? It seems that if you delete it it removes the beta rewards.",
+          "url": "https://steamcommunity.com/app/2584270/discussions/0/582805931178427824/",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "",
+          "relevance": 0.53,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        }
+      ],
+      "gsc_match": {
+        "status": "WEAK",
+        "query": {
+          "query": "mortal shell 2 skip prologue",
+          "clicks": 0,
+          "impressions": 30,
+          "position": 8.8,
+          "page_url": "/mortal-shell-ii/skip-prologue/"
+        },
+        "score": 2
+      },
+      "existing_page_match": {
+        "status": "PARTIAL",
+        "page": {
+          "url": "/mortal-shell-ii/skip-prologue/",
+          "title": "How to Skip the Prologue in Mortal Shell 2"
+        },
+        "score": 2
+      },
+      "intervention_match": {
+        "recent_intervention": false
+      },
+      "decision": "WATCH",
+      "reason": "Existing page is partial, but signal is not strong enough to expand yet."
+    },
+    {
+      "topic_key": "beta-bonu-flayed-get-harbing-harbinger",
+      "topic": "Mortal Shell 2 Flayed Harbinger Open Beta Bonus Showcase Mortal Shell 2 Flayed Harbinger Open Beta Bonus Showcase This video shows how to get the Flayed Harbing?",
+      "intent": "TASK",
+      "representative_questions": [
+        "Mortal Shell 2 Flayed Harbinger Open Beta Bonus Showcase Mortal Shell 2 Flayed Harbinger Open Beta Bonus Showcase This video shows how to get the Flayed Harbing?"
+      ],
+      "evidence_count": 1,
+      "source_families": [
+        "VIDEO"
+      ],
+      "providers": [
+        "youtube"
+      ],
+      "freshness_score": 50,
+      "engagement_score": 8,
+      "task_intent_score": 52,
+      "evidence": [
+        {
+          "provider": "youtube",
+          "source_family": "VIDEO",
+          "title": "Mortal Shell 2 Flayed Harbinger Open Beta Bonus Showcase",
+          "text": "This video shows how to get the Flayed Harbinger Skin in Mortal Shell 2. The skin is an exclusive reward for participating in the Mortal Shell 2 Open Beta. #mortalshell #mortalshell2 #gaming 00:00 Intro 00:05 How to get Flayed Harbinger Open Beta Bonus 01:12 Open Beta Bonus - Fla",
+          "snippet": "This video shows how to get the Flayed Harbinger Skin in Mortal Shell 2. The skin is an exclusive reward for participating in the Mortal Shell 2 Open Beta. #mortalshell #mortalshell2 #gaming 00:00 Intro 00:05 How to get Flayed Harbinger Open Beta Bonus 01:12 Open Beta Bonus - Fla",
+          "url": "https://www.youtube.com/watch?v=9AhX4FdQ5K0",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "",
+          "relevance": 0.71,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        }
+      ],
+      "gsc_match": {
+        "status": "ABSENT",
+        "query": {},
+        "score": 0
+      },
+      "existing_page_match": {
+        "status": "NONE",
+        "page": {},
+        "score": 0
+      },
+      "intervention_match": {
+        "recent_intervention": false
+      },
+      "decision": "WATCH",
+      "reason": "Social signal exists but needs stronger confirmation before NEW."
+    },
+    {
+      "topic_key": "beta",
+      "topic": "Beta 存档/进度会带到正式版吗？",
+      "intent": "GENERIC",
+      "representative_questions": [
+        "Beta 存档/进度会带到正式版吗？"
+      ],
+      "evidence_count": 1,
+      "source_families": [
+        "COMMUNITY"
+      ],
+      "providers": [
+        "steam"
+      ],
+      "freshness_score": 50,
+      "engagement_score": 8,
+      "task_intent_score": 37,
+      "evidence": [
+        {
+          "provider": "steam",
+          "source_family": "COMMUNITY",
+          "title": "Skip the prologue and skin.",
+          "text": "I'm assuming the achievements that you got in the open beta don't carry over right?",
+          "snippet": "I'm assuming the achievements that you got in the open beta don't carry over right?",
+          "url": "https://steamcommunity.com/app/2584270/discussions/0/418424310691140696/",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "Beta 存档/进度会带到正式版吗？",
+          "relevance": 0.44,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        }
+      ],
+      "gsc_match": {
+        "status": "ABSENT",
+        "query": {},
+        "score": 0
+      },
+      "existing_page_match": {
+        "status": "NONE",
+        "page": {},
+        "score": 0
+      },
+      "intervention_match": {
+        "recent_intervention": false
+      },
+      "decision": "IGNORE",
+      "reason": "Generic discussion or non-task intent."
+    },
+    {
+      "topic_key": "beta-flayed-harbringer-open-reward-skin",
+      "topic": "Mortal Shell II - Flayed Harbringer Skin (Open Beta Reward)",
+      "intent": "GENERIC",
+      "representative_questions": [],
+      "evidence_count": 1,
+      "source_families": [
+        "VIDEO"
+      ],
+      "providers": [
+        "youtube"
+      ],
+      "freshness_score": 50,
+      "engagement_score": 8,
+      "task_intent_score": 10,
+      "evidence": [
+        {
+          "provider": "youtube",
+          "source_family": "VIDEO",
+          "title": "Mortal Shell II - Flayed Harbringer Skin (Open Beta Reward)",
+          "text": "Flayed Harbringer Cosmetic Reward from the Open Beta in Mortal Shell II! Join the Toad Summon Support team! ► https://www.youtube.com/c/AxiomG/join",
+          "snippet": "Flayed Harbringer Cosmetic Reward from the Open Beta in Mortal Shell II! Join the Toad Summon Support team! ► https://www.youtube.com/c/AxiomG/join",
+          "url": "https://www.youtube.com/watch?v=-GpM2H62Tfo",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "",
+          "relevance": 0.62,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        }
+      ],
+      "gsc_match": {
+        "status": "ABSENT",
+        "query": {},
+        "score": 0
+      },
+      "existing_page_match": {
+        "status": "NONE",
+        "page": {},
+        "score": 0
+      },
+      "intervention_match": {
+        "recent_intervention": false
+      },
+      "decision": "IGNORE",
+      "reason": "Generic discussion or non-task intent."
+    },
+    {
+      "topic_key": "other",
+      "topic": "mortal shell 2 пропали обсидиановые оболочки",
+      "intent": "GENERIC",
+      "representative_questions": [],
+      "evidence_count": 1,
+      "source_families": [
+        "COMMUNITY"
+      ],
+      "providers": [
+        "steam"
+      ],
+      "freshness_score": 50,
+      "engagement_score": 8,
+      "task_intent_score": 0,
+      "evidence": [
+        {
+          "provider": "steam",
+          "source_family": "COMMUNITY",
+          "title": "mortal shell 2 пропали обсидиановые оболочки",
+          "text": "mortal shell 2 пропали обсидиановые оболочки - после получения нового скина на оболочку, пропали обсидиановые оболочки",
+          "snippet": "mortal shell 2 пропали обсидиановые оболочки - после получения нового скина на оболочку, пропали обсидиановые оболочки",
+          "url": "https://steamcommunity.com/app/2584270/discussions/0/582805931178369990/",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "",
+          "relevance": 0.44,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        }
+      ],
+      "gsc_match": {
+        "status": "ABSENT",
+        "query": {},
+        "score": 0
+      },
+      "existing_page_match": {
+        "status": "NONE",
+        "page": {},
+        "score": 0
+      },
+      "intervention_match": {
+        "recent_intervention": false
+      },
+      "decision": "IGNORE",
+      "reason": "Generic discussion or non-task intent."
+    }
+  ],
+  "decision_counts": {
+    "NEW": 0,
+    "EXPAND": 1,
+    "WATCH": 3,
+    "IGNORE": 3
+  }
+}

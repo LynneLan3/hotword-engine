@@ -1,0 +1,882 @@
+{
+  "job_id": "game-wide-ms2-20260821-run3",
+  "job_type": "GAME_WIDE_SOCIAL_DISCOVERY",
+  "site_key": "Mortal Shell II",
+  "game_name": "Mortal Shell II",
+  "aliases": [],
+  "lookback_hours": 48,
+  "status": "COMPLETED",
+  "run_at": "2026-08-21T07:37:46+00:00",
+  "source_counts": {
+    "reddit": 4,
+    "steam": 10,
+    "youtube": 8
+  },
+  "source_failures": {},
+  "evidence_count": 18,
+  "clusters": [
+    {
+      "topic_key": "asking-create-file-me-not-save",
+      "topic": "I create second save file ( New Game ) and not asking me to skip?",
+      "intent": "TASK",
+      "representative_questions": [
+        "I create second save file ( New Game ) and not asking me to skip?"
+      ],
+      "evidence_count": 1,
+      "source_families": [
+        "COMMUNITY"
+      ],
+      "providers": [
+        "steam"
+      ],
+      "freshness_score": 50,
+      "engagement_score": 8,
+      "task_intent_score": 79,
+      "evidence": [
+        {
+          "provider": "steam",
+          "source_family": "COMMUNITY",
+          "title": "I create second save file ( New Game ) and not asking me to skip? I need to play from the beginning?",
+          "text": "Did you delete the beta? It seems that if you delete it it removes the beta rewards.",
+          "snippet": "Did you delete the beta? It seems that if you delete it it removes the beta rewards.",
+          "url": "https://steamcommunity.com/app/2584270/discussions/0/582805931178427824/",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "",
+          "relevance": 0.53,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        }
+      ],
+      "gsc_match": {
+        "status": "WEAK",
+        "query": {
+          "query": "mortal shell 2 skip prologue",
+          "clicks": 0,
+          "impressions": 30,
+          "position": 8.8,
+          "page_url": "/mortal-shell-ii/skip-prologue/"
+        },
+        "score": 2
+      },
+      "existing_page_match": {
+        "status": "PARTIAL",
+        "page": {
+          "url": "/mortal-shell-ii/skip-prologue/",
+          "title": "How to Skip the Prologue in Mortal Shell 2"
+        },
+        "score": 2
+      },
+      "intervention_match": {
+        "recent_intervention": false
+      },
+      "decision": "WATCH",
+      "reason": "Existing page is partial, but signal is not strong enough to expand yet."
+    },
+    {
+      "topic_key": "skip-prologue",
+      "topic": "How do I skip the prologue?",
+      "intent": "TASK",
+      "representative_questions": [
+        "How do I skip the prologue?"
+      ],
+      "evidence_count": 1,
+      "source_families": [
+        "COMMUNITY"
+      ],
+      "providers": [
+        "steam"
+      ],
+      "freshness_score": 50,
+      "engagement_score": 8,
+      "task_intent_score": 72,
+      "evidence": [
+        {
+          "provider": "steam",
+          "source_family": "COMMUNITY",
+          "title": "Beta Savegame + reward skin not carrying over",
+          "text": "They only let me skip the prologue and gave me a bit of loot, enough to reach level 4. None of my progress carried over, the map is locked again, even though I explored it all in the beta.",
+          "snippet": "They only let me skip the prologue and gave me a bit of loot, enough to reach level 4. None of my progress carried over, the map is locked again, even though I explored it all in the beta.",
+          "url": "https://steamcommunity.com/app/2584270/discussions/0/418424310691123465/",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "",
+          "relevance": 0.53,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        }
+      ],
+      "gsc_match": {
+        "status": "PRESENT",
+        "query": {
+          "query": "mortal shell 2 skip prologue",
+          "clicks": 0,
+          "impressions": 30,
+          "position": 8.8,
+          "page_url": "/mortal-shell-ii/skip-prologue/"
+        },
+        "score": 8
+      },
+      "existing_page_match": {
+        "status": "MATCHED",
+        "page": {
+          "url": "/mortal-shell-ii/skip-prologue/",
+          "title": "How to Skip the Prologue in Mortal Shell 2"
+        },
+        "score": 10
+      },
+      "intervention_match": {
+        "recent_intervention": false
+      },
+      "decision": "WATCH",
+      "reason": "Existing page is matched, but signal is not strong enough to expand yet."
+    },
+    {
+      "topic_key": "crash",
+      "topic": "Why does the game crash?",
+      "intent": "TASK",
+      "representative_questions": [
+        "Why does the game crash?"
+      ],
+      "evidence_count": 1,
+      "source_families": [
+        "COMMUNITY"
+      ],
+      "providers": [
+        "steam"
+      ],
+      "freshness_score": 50,
+      "engagement_score": 8,
+      "task_intent_score": 72,
+      "evidence": [
+        {
+          "provider": "steam",
+          "source_family": "COMMUNITY",
+          "title": "Crashing",
+          "text": "Mortal Shell II crashed a lot randomly with generic Unreal Engine Crash Report.",
+          "snippet": "Mortal Shell II crashed a lot randomly with generic Unreal Engine Crash Report.",
+          "url": "https://steamcommunity.com/app/2584270/discussions/3/582805931178500381/",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "",
+          "relevance": 0.44,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        }
+      ],
+      "gsc_match": {
+        "status": "PRESENT",
+        "query": {
+          "query": "mortal shell 2 crashing",
+          "clicks": 0,
+          "impressions": 56,
+          "position": 8.5,
+          "page_url": "/mortal-shell-ii/crashing-pc/"
+        },
+        "score": 6
+      },
+      "existing_page_match": {
+        "status": "MATCHED",
+        "page": {
+          "url": "/mortal-shell-ii/crashing-pc/",
+          "title": "Mortal Shell 2 Crashing on PC?"
+        },
+        "score": 8
+      },
+      "intervention_match": {
+        "recent_intervention": false
+      },
+      "decision": "WATCH",
+      "reason": "Existing page is matched, but signal is not strong enough to expand yet."
+    },
+    {
+      "topic_key": "beacon-travel",
+      "topic": "Where are all the Beacons?",
+      "intent": "TASK",
+      "representative_questions": [
+        "Where are all the Beacons?"
+      ],
+      "evidence_count": 1,
+      "source_families": [
+        "COMMUNITY"
+      ],
+      "providers": [
+        "reddit"
+      ],
+      "freshness_score": 50,
+      "engagement_score": 8,
+      "task_intent_score": 65,
+      "evidence": [
+        {
+          "provider": "reddit",
+          "source_family": "COMMUNITY",
+          "title": "Mortal Shell II Interactive Map — 1,900+ markers, routes, tracker & community ranking",
+          "text": "Hey everyone! Big fan of the game and I've put together an interactive map that's been in the works since before launch. It's completely free to use. 🗺️ Map: Mortal Shell 2 Interactive Map What's mapped (1,936 markers across 68 categories): * Points of Interest: Beacons, Dungeons",
+          "snippet": "Hey everyone! Big fan of the game and I've put together an interactive map that's been in the works since before launch. It's completely free to use. 🗺️ Map: Mortal Shell 2 Interactive Map What's mapped (1,936 markers across 68 categories): * Points of Interest: Beacons, Dungeons",
+          "url": "https://www.reddit.com/r/MortalShell/comments/1vto56r/mortal_shell_ii_interactive_map_1900_markers/",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "",
+          "relevance": 0.8,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        }
+      ],
+      "gsc_match": {
+        "status": "ABSENT",
+        "query": {},
+        "score": 0
+      },
+      "existing_page_match": {
+        "status": "NONE",
+        "page": {},
+        "score": 0
+      },
+      "intervention_match": {
+        "recent_intervention": false
+      },
+      "decision": "WATCH",
+      "reason": "Social signal exists but needs stronger confirmation before NEW."
+    },
+    {
+      "topic_key": "20-austin-buyraycon-com-get-go",
+      "topic": "Austin recommends: Mortal Shell 2 (Review) Austin recommends: Mortal Shell 2 (Review) Go to https://buyraycon.com/skillupCLIP to get 20% off. Thanks to Raycon f?",
+      "intent": "TASK",
+      "representative_questions": [
+        "Austin recommends: Mortal Shell 2 (Review) Austin recommends: Mortal Shell 2 (Review) Go to https://buyraycon.com/skillupCLIP to get 20% off. Thanks to Raycon f?"
+      ],
+      "evidence_count": 1,
+      "source_families": [
+        "VIDEO"
+      ],
+      "providers": [
+        "youtube"
+      ],
+      "freshness_score": 50,
+      "engagement_score": 8,
+      "task_intent_score": 52,
+      "evidence": [
+        {
+          "provider": "youtube",
+          "source_family": "VIDEO",
+          "title": "Austin recommends: Mortal Shell 2 (Review)",
+          "text": "Go to https://buyraycon.com/skillupCLIP to get 20% off. Thanks to Raycon for sponsoring! -- Mortal Shell 2 is a serious step-up over its predecessor, delivering better combat, customisation, visuals and style. Boss encounters are still a weak point but the overall package is stil",
+          "snippet": "Go to https://buyraycon.com/skillupCLIP to get 20% off. Thanks to Raycon for sponsoring! -- Mortal Shell 2 is a serious step-up over its predecessor, delivering better combat, customisation, visuals and style. Boss encounters are still a weak point but the overall package is stil",
+          "url": "https://www.youtube.com/watch?v=F3T4xb0LH0Q",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "",
+          "relevance": 0.44,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        }
+      ],
+      "gsc_match": {
+        "status": "ABSENT",
+        "query": {},
+        "score": 0
+      },
+      "existing_page_match": {
+        "status": "NONE",
+        "page": {},
+        "score": 0
+      },
+      "intervention_match": {
+        "recent_intervention": false
+      },
+      "decision": "WATCH",
+      "reason": "Social signal exists but needs stronger confirmation before NEW."
+    },
+    {
+      "topic_key": "kong-wu",
+      "topic": "Mortal Shell 2 or Wu Kong?",
+      "intent": "TASK",
+      "representative_questions": [
+        "Mortal Shell 2 or Wu Kong?"
+      ],
+      "evidence_count": 1,
+      "source_families": [
+        "COMMUNITY"
+      ],
+      "providers": [
+        "steam"
+      ],
+      "freshness_score": 50,
+      "engagement_score": 8,
+      "task_intent_score": 45,
+      "evidence": [
+        {
+          "provider": "steam",
+          "source_family": "COMMUNITY",
+          "title": "Mortal Shell 2 or Wu Kong?",
+          "text": "I glad to see Mortal Shell 2 in release. I play demo. I like it in general. But I don't have much time to beat every monster or boss 10-20-30 times. So I have a question which game most repetitive? Mortal Shell 2 or Wu Kong like a games in similar genre.",
+          "snippet": "I glad to see Mortal Shell 2 in release. I play demo. I like it in general. But I don't have much time to beat every monster or boss 10-20-30 times. So I have a question which game most repetitive? Mortal Shell 2 or Wu Kong like a games in similar genre.",
+          "url": "https://steamcommunity.com/app/2584270/discussions/0/582805931178477919/",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "",
+          "relevance": 0.44,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        }
+      ],
+      "gsc_match": {
+        "status": "ABSENT",
+        "query": {},
+        "score": 0
+      },
+      "existing_page_match": {
+        "status": "NONE",
+        "page": {},
+        "score": 0
+      },
+      "intervention_match": {
+        "recent_intervention": false
+      },
+      "decision": "WATCH",
+      "reason": "Social signal exists but needs stronger confirmation before NEW."
+    },
+    {
+      "topic_key": "best-review-soulslike-time",
+      "topic": "Mortal Shell 2 REVIEW - The BEST SOULSLIKE of ALL TIME ?",
+      "intent": "TASK",
+      "representative_questions": [
+        "Mortal Shell 2 REVIEW - The BEST SOULSLIKE of ALL TIME ?"
+      ],
+      "evidence_count": 1,
+      "source_families": [
+        "VIDEO"
+      ],
+      "providers": [
+        "youtube"
+      ],
+      "freshness_score": 50,
+      "engagement_score": 8,
+      "task_intent_score": 45,
+      "evidence": [
+        {
+          "provider": "youtube",
+          "source_family": "VIDEO",
+          "title": "Mortal Shell 2 REVIEW - The BEST SOULSLIKE of ALL TIME ???",
+          "text": "Mortal Shell 2 REVIEW - The BEST SOULSLIKE of ALL TIME ??? In this video, I'm going to be talking about my hands-on impressions with Mortal Shell 2. I finished the game earlier this week. Absolutely had a ton of fun playing this game. It was one of those games that I played that",
+          "snippet": "Mortal Shell 2 REVIEW - The BEST SOULSLIKE of ALL TIME ??? In this video, I'm going to be talking about my hands-on impressions with Mortal Shell 2. I finished the game earlier this week. Absolutely had a ton of fun playing this game. It was one of those games that I played that",
+          "url": "https://www.youtube.com/watch?v=b3XutCkbzEw",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "Mortal Shell 2 REVIEW - The BEST SOULSLIKE of ALL TIME ?",
+          "relevance": 0.44,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        }
+      ],
+      "gsc_match": {
+        "status": "ABSENT",
+        "query": {},
+        "score": 0
+      },
+      "existing_page_match": {
+        "status": "NONE",
+        "page": {},
+        "score": 0
+      },
+      "intervention_match": {
+        "recent_intervention": false
+      },
+      "decision": "WATCH",
+      "reason": "Social signal exists but needs stronger confirmation before NEW."
+    },
+    {
+      "topic_key": "review-thread",
+      "topic": "Mortal Shell II Review Thread",
+      "intent": "GENERIC",
+      "representative_questions": [],
+      "evidence_count": 2,
+      "source_families": [
+        "COMMUNITY"
+      ],
+      "providers": [
+        "reddit"
+      ],
+      "freshness_score": 50,
+      "engagement_score": 16,
+      "task_intent_score": 10,
+      "evidence": [
+        {
+          "provider": "reddit",
+          "source_family": "COMMUNITY",
+          "title": "Mortal Shell II Review Thread",
+          "text": "Game Information Game Title : Mortal Shell II Platforms : PC (Aug 20, 2026) PS5 (Aug 20, 2026) Xbox Series S|X (Aug 20, 2026) Trailer : Review Aggregator : OpenCritic - 85 average - 92% recommended - 37 reviews Critic Reviews Analog Stick Gaming - Jordan Andow - 9.5 / 10 Mortal S",
+          "snippet": "Game Information Game Title : Mortal Shell II Platforms : PC (Aug 20, 2026) PS5 (Aug 20, 2026) Xbox Series S|X (Aug 20, 2026) Trailer : Review Aggregator : OpenCritic - 85 average - 92% recommended - 37 reviews Critic Reviews Analog Stick Gaming - Jordan Andow - 9.5 / 10 Mortal S",
+          "url": "https://www.reddit.com/r/Games/comments/1vqrpud/mortal_shell_ii_review_thread/",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "",
+          "relevance": 0.8,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        },
+        {
+          "provider": "reddit",
+          "source_family": "COMMUNITY",
+          "title": "Mortal Shell II - Review Thread",
+          "text": "Platforms : PC (Aug 20, 2026) Xbox Series X|S (Aug 20, 2026) Playstation 5 (Aug 20, 2026) Trailer : Review Aggregator : OpenCritic - 85 average - 92% recommended - 37 reviews Critic Reviews Analog Stick Gaming - Jordan Andow - 9.5 / 10 Mortal Shell II is my favorite Soulslike sin",
+          "snippet": "Platforms : PC (Aug 20, 2026) Xbox Series X|S (Aug 20, 2026) Playstation 5 (Aug 20, 2026) Trailer : Review Aggregator : OpenCritic - 85 average - 92% recommended - 37 reviews Critic Reviews Analog Stick Gaming - Jordan Andow - 9.5 / 10 Mortal Shell II is my favorite Soulslike sin",
+          "url": "https://www.reddit.com/r/xbox/comments/1vqu8xm/mortal_shell_ii_review_thread/",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "",
+          "relevance": 0.8,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        }
+      ],
+      "gsc_match": {
+        "status": "ABSENT",
+        "query": {},
+        "score": 0
+      },
+      "existing_page_match": {
+        "status": "NONE",
+        "page": {},
+        "score": 0
+      },
+      "intervention_match": {
+        "recent_intervention": false
+      },
+      "decision": "IGNORE",
+      "reason": "Generic discussion or non-task intent."
+    },
+    {
+      "topic_key": "build-play-sariel",
+      "topic": "Mortal Shell 2 Sariel Build Guide - How to Play Sariel",
+      "intent": "GENERIC",
+      "representative_questions": [],
+      "evidence_count": 2,
+      "source_families": [
+        "VIDEO"
+      ],
+      "providers": [
+        "youtube"
+      ],
+      "freshness_score": 50,
+      "engagement_score": 16,
+      "task_intent_score": 10,
+      "evidence": [
+        {
+          "provider": "youtube",
+          "source_family": "VIDEO",
+          "title": "Mortal Shell 2 Sariel Build Guide - How to Play Sariel",
+          "text": "Mortal Shell 2 Sariel Build Guide - How to Play Sariel In this video, I'm going to be showing you guys my Sariel build and how I play Sariel in Mortal Shell two. This is a curse build. I'm going to go through the reasons why that is, but Sariel generally has a bit of a focus on c",
+          "snippet": "Mortal Shell 2 Sariel Build Guide - How to Play Sariel In this video, I'm going to be showing you guys my Sariel build and how I play Sariel in Mortal Shell two. This is a curse build. I'm going to go through the reasons why that is, but Sariel generally has a bit of a focus on c",
+          "url": "https://www.youtube.com/watch?v=io8XpQnxoeE",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "",
+          "relevance": 0.44,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        },
+        {
+          "provider": "youtube",
+          "source_family": "VIDEO",
+          "title": "Mortal Shell 2 Genessa Build Guide - How to Play Genessa",
+          "text": "Mortal Shell 2 Genessa Build Guide - How to Play Genessa In this video, I'm going to be showing you guys my Genessa build and how I play Genessa in Mortal Shell two. This is a phantom build. I'm going to go through the reasons why that is, but Genessa generally has a bit of a foc",
+          "snippet": "Mortal Shell 2 Genessa Build Guide - How to Play Genessa In this video, I'm going to be showing you guys my Genessa build and how I play Genessa in Mortal Shell two. This is a phantom build. I'm going to go through the reasons why that is, but Genessa generally has a bit of a foc",
+          "url": "https://www.youtube.com/watch?v=x21bw4mpJfk",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "",
+          "relevance": 0.44,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        }
+      ],
+      "gsc_match": {
+        "status": "ABSENT",
+        "query": {},
+        "score": 0
+      },
+      "existing_page_match": {
+        "status": "NONE",
+        "page": {},
+        "score": 0
+      },
+      "intervention_match": {
+        "recent_intervention": false
+      },
+      "decision": "IGNORE",
+      "reason": "Generic discussion or non-task intent."
+    },
+    {
+      "topic_key": "upgrade-weapon",
+      "topic": "How to Upgrade Weapons – Mortal Shell 2",
+      "intent": "GENERIC",
+      "representative_questions": [],
+      "evidence_count": 1,
+      "source_families": [
+        "COMMUNITY"
+      ],
+      "providers": [
+        "reddit"
+      ],
+      "freshness_score": 50,
+      "engagement_score": 8,
+      "task_intent_score": 10,
+      "evidence": [
+        {
+          "provider": "reddit",
+          "source_family": "COMMUNITY",
+          "title": "How to Upgrade Weapons – Mortal Shell 2",
+          "text": "Upgrading Weapons in Mortal Shell 2 is vital for your progression because as you progress the game, you’ll face tougher enemies. Once you start upgrading your weapons, the game stops feeling random and starts feeling intentional. Instead of relying on “better weapons”, you can us",
+          "snippet": "Upgrading Weapons in Mortal Shell 2 is vital for your progression because as you progress the game, you’ll face tougher enemies. Once you start upgrading your weapons, the game stops feeling random and starts feeling intentional. Instead of relying on “better weapons”, you can us",
+          "url": "https://www.reddit.com/r/PatchCrazy/comments/1vtbq05/how_to_upgrade_weapons_mortal_shell_2/",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "",
+          "relevance": 0.8,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        }
+      ],
+      "gsc_match": {
+        "status": "ABSENT",
+        "query": {},
+        "score": 0
+      },
+      "existing_page_match": {
+        "status": "NONE",
+        "page": {},
+        "score": 0
+      },
+      "intervention_match": {
+        "recent_intervention": false
+      },
+      "decision": "IGNORE",
+      "reason": "Generic discussion or non-task intent."
+    },
+    {
+      "topic_key": "other",
+      "topic": "Фанатское творчество",
+      "intent": "GENERIC",
+      "representative_questions": [],
+      "evidence_count": 1,
+      "source_families": [
+        "COMMUNITY"
+      ],
+      "providers": [
+        "steam"
+      ],
+      "freshness_score": 50,
+      "engagement_score": 8,
+      "task_intent_score": 10,
+      "evidence": [
+        {
+          "provider": "steam",
+          "source_family": "COMMUNITY",
+          "title": "Фанатское творчество",
+          "text": "Видеоклип по Mortal Shell 2 под тяжелую музыку на русском языке. https://rutube.ru/video/2af058fb65dc6c0f82e497d26dc9cecc/",
+          "snippet": "Видеоклип по Mortal Shell 2 под тяжелую музыку на русском языке. https://rutube.ru/video/2af058fb65dc6c0f82e497d26dc9cecc/",
+          "url": "https://steamcommunity.com/app/2584270/discussions/0/582805931178521961/",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "",
+          "relevance": 0.44,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        }
+      ],
+      "gsc_match": {
+        "status": "ABSENT",
+        "query": {},
+        "score": 0
+      },
+      "existing_page_match": {
+        "status": "NONE",
+        "page": {},
+        "score": 0
+      },
+      "intervention_match": {
+        "recent_intervention": false
+      },
+      "decision": "IGNORE",
+      "reason": "Generic discussion or non-task intent."
+    },
+    {
+      "topic_key": "dlc",
+      "topic": "Mortal Shell DLC",
+      "intent": "GENERIC",
+      "representative_questions": [],
+      "evidence_count": 1,
+      "source_families": [
+        "COMMUNITY"
+      ],
+      "providers": [
+        "steam"
+      ],
+      "freshness_score": 50,
+      "engagement_score": 8,
+      "task_intent_score": 10,
+      "evidence": [
+        {
+          "provider": "steam",
+          "source_family": "COMMUNITY",
+          "title": "Mortal Shell DLC",
+          "text": "I hope you have DLC planned for Mortal Shell 2 because it’s an amazing game and just a blast to play. I hope we see story expansion with some new Shells weapons & map locations with new skins 🙏",
+          "snippet": "I hope you have DLC planned for Mortal Shell 2 because it’s an amazing game and just a blast to play. I hope we see story expansion with some new Shells weapons & map locations with new skins 🙏",
+          "url": "https://steamcommunity.com/app/2584270/discussions/1/582805931178514149/",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "",
+          "relevance": 0.44,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        }
+      ],
+      "gsc_match": {
+        "status": "ABSENT",
+        "query": {},
+        "score": 0
+      },
+      "existing_page_match": {
+        "status": "NONE",
+        "page": {},
+        "score": 0
+      },
+      "intervention_match": {
+        "recent_intervention": false
+      },
+      "decision": "IGNORE",
+      "reason": "Generic discussion or non-task intent."
+    },
+    {
+      "topic_key": "before-buy",
+      "topic": "Mortal Shell 2 - Before You Buy",
+      "intent": "GENERIC",
+      "representative_questions": [],
+      "evidence_count": 1,
+      "source_families": [
+        "VIDEO"
+      ],
+      "providers": [
+        "youtube"
+      ],
+      "freshness_score": 50,
+      "engagement_score": 8,
+      "task_intent_score": 10,
+      "evidence": [
+        {
+          "provider": "youtube",
+          "source_family": "VIDEO",
+          "title": "Mortal Shell 2 - Before You Buy",
+          "text": "Mortal Shell II (PC, PS5, Xbox Series X/S) is an action RPG with some fun twists. Let's talk. Subscribe for more: http://youtube.com/gameranxtv ▼▼ Watch more 'Before You Buy': https://bit.ly/2kfdxI6",
+          "snippet": "Mortal Shell II (PC, PS5, Xbox Series X/S) is an action RPG with some fun twists. Let's talk. Subscribe for more: http://youtube.com/gameranxtv ▼▼ Watch more 'Before You Buy': https://bit.ly/2kfdxI6",
+          "url": "https://www.youtube.com/watch?v=QxhFbKLVzYM",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "",
+          "relevance": 0.44,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        }
+      ],
+      "gsc_match": {
+        "status": "ABSENT",
+        "query": {},
+        "score": 0
+      },
+      "existing_page_match": {
+        "status": "NONE",
+        "page": {},
+        "score": 0
+      },
+      "intervention_match": {
+        "recent_intervention": false
+      },
+      "decision": "IGNORE",
+      "reason": "Generic discussion or non-task intent."
+    },
+    {
+      "topic_key": "entire-recap-story",
+      "topic": "The ENTIRE Story of Mortal Shell | Recap for Mortal Shell 2",
+      "intent": "GENERIC",
+      "representative_questions": [],
+      "evidence_count": 1,
+      "source_families": [
+        "VIDEO"
+      ],
+      "providers": [
+        "youtube"
+      ],
+      "freshness_score": 50,
+      "engagement_score": 8,
+      "task_intent_score": 10,
+      "evidence": [
+        {
+          "provider": "youtube",
+          "source_family": "VIDEO",
+          "title": "The ENTIRE Story of Mortal Shell | Recap for Mortal Shell 2",
+          "text": "Mortal Shell 2 has just dropped, and throws the player into a compelling fantasy world, that has a strong cosmic undertone. While the sequel is standalone, there are frequent call-backs and references to the events of the first game. This Lore video will explain the ENTIRE Lore o",
+          "snippet": "Mortal Shell 2 has just dropped, and throws the player into a compelling fantasy world, that has a strong cosmic undertone. While the sequel is standalone, there are frequent call-backs and references to the events of the first game. This Lore video will explain the ENTIRE Lore o",
+          "url": "https://www.youtube.com/watch?v=mmsGC6ANg3c",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "",
+          "relevance": 0.44,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        }
+      ],
+      "gsc_match": {
+        "status": "ABSENT",
+        "query": {},
+        "score": 0
+      },
+      "existing_page_match": {
+        "status": "NONE",
+        "page": {},
+        "score": 0
+      },
+      "intervention_match": {
+        "recent_intervention": false
+      },
+      "decision": "IGNORE",
+      "reason": "Generic discussion or non-task intent."
+    },
+    {
+      "topic_key": "date-official-release-trailer",
+      "topic": "Mortal Shell 2 - Official Release Date Trailer",
+      "intent": "GENERIC",
+      "representative_questions": [],
+      "evidence_count": 1,
+      "source_families": [
+        "VIDEO"
+      ],
+      "providers": [
+        "youtube"
+      ],
+      "freshness_score": 50,
+      "engagement_score": 8,
+      "task_intent_score": 10,
+      "evidence": [
+        {
+          "provider": "youtube",
+          "source_family": "VIDEO",
+          "title": "Mortal Shell 2 - Official Release Date Trailer",
+          "text": "Mortal Shell 2 gets a new trailer and a release date announcement. Watch the latest Mortal Shell 2 trailer for the upcoming dark fantasy action RPG sequel to see brutal gameplay, the complete set of 8 playable Shells that you can discover, and more. The new trailer for Mortal She",
+          "snippet": "Mortal Shell 2 gets a new trailer and a release date announcement. Watch the latest Mortal Shell 2 trailer for the upcoming dark fantasy action RPG sequel to see brutal gameplay, the complete set of 8 playable Shells that you can discover, and more. The new trailer for Mortal She",
+          "url": "https://www.youtube.com/watch?v=Zd7xpEfZ_88",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "",
+          "relevance": 0.44,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        }
+      ],
+      "gsc_match": {
+        "status": "ABSENT",
+        "query": {},
+        "score": 0
+      },
+      "existing_page_match": {
+        "status": "NONE",
+        "page": {},
+        "score": 0
+      },
+      "intervention_match": {
+        "recent_intervention": false
+      },
+      "decision": "IGNORE",
+      "reason": "Generic discussion or non-task intent."
+    },
+    {
+      "topic_key": "like-played-soul-yep",
+      "topic": "I played Mortal Shell 2 — yep, it's a Souls-Like",
+      "intent": "GENERIC",
+      "representative_questions": [],
+      "evidence_count": 1,
+      "source_families": [
+        "VIDEO"
+      ],
+      "providers": [
+        "youtube"
+      ],
+      "freshness_score": 50,
+      "engagement_score": 8,
+      "task_intent_score": 10,
+      "evidence": [
+        {
+          "provider": "youtube",
+          "source_family": "VIDEO",
+          "title": "I played Mortal Shell 2 — yep, it's a Souls-Like",
+          "text": "Thank you Playstack for sponsoring! Mortal Shell 2 is available now: Steam - https://ggtalent.gg/MSII_Steam PlayStation - https://ggtalent.gg/MSII_PS Xbox - https://ggtalent.gg/MSII_Xbox my stuff: twitter: https://twitter.com/IronPineapple_ bluesky: https://bsky.app/profile/ironp",
+          "snippet": "Thank you Playstack for sponsoring! Mortal Shell 2 is available now: Steam - https://ggtalent.gg/MSII_Steam PlayStation - https://ggtalent.gg/MSII_PS Xbox - https://ggtalent.gg/MSII_Xbox my stuff: twitter: https://twitter.com/IronPineapple_ bluesky: https://bsky.app/profile/ironp",
+          "url": "https://www.youtube.com/watch?v=JmC53fspphg",
+          "id": "",
+          "published_at": null,
+          "engagement": {},
+          "player_question": "",
+          "relevance": 0.44,
+          "matched_seed_terms": [
+            "Mortal Shell II"
+          ]
+        }
+      ],
+      "gsc_match": {
+        "status": "ABSENT",
+        "query": {},
+        "score": 0
+      },
+      "existing_page_match": {
+        "status": "NONE",
+        "page": {},
+        "score": 0
+      },
+      "intervention_match": {
+        "recent_intervention": false
+      },
+      "decision": "IGNORE",
+      "reason": "Generic discussion or non-task intent."
+    }
+  ],
+  "decision_counts": {
+    "NEW": 0,
+    "EXPAND": 0,
+    "WATCH": 7,
+    "IGNORE": 9
+  }
+}
