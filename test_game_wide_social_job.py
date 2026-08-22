@@ -208,6 +208,8 @@ class FetcherContractTests(unittest.TestCase):
             "discovery_scope": {"scope": "GAME_WIDE", "lookback_hours": 24},
             "seed_terms": ["Mortal Shell II", "Mortal Shell 2"],
             "source_families_requested": ["COMMUNITY", "VIDEO"],
+            "trigger_type": "DAILY_GAME_WIDE",
+            "discovery_cycle_date": "2026-08-21",
             "created_at": "2026-08-21T10:00:00+08:00",
         }
         base.update(overrides)
@@ -222,6 +224,10 @@ class FetcherContractTests(unittest.TestCase):
         self.assertEqual(out["discovery_scope"]["scope"], "GAME_WIDE")
         self.assertIn("seed_terms", out)
         self.assertIn("source_families_requested", out)
+        self.assertEqual(out["lookback_hours"], 24)
+        self.assertEqual(out["aliases"], ["Mortal Shell 2"])
+        self.assertEqual(out["trigger_type"], "DAILY_GAME_WIDE")
+        self.assertEqual(out["discovery_cycle_date"], "2026-08-21")
         # Must NOT contain these removed fields
         self.assertNotIn("gsc_queries", out)
         self.assertNotIn("existing_pages", out)

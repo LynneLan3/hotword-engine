@@ -84,6 +84,14 @@ def _normalize_contract(job: dict[str, Any]) -> dict[str, Any]:
     for field in ("seed_terms", "source_families_requested"):
         if not isinstance(out.get(field), list):
             out[field] = []
+    out["aliases"] = job.get("aliases") if isinstance(job.get("aliases"), list) else out["seed_terms"][1:]
+    scope = out.get("discovery_scope") or {}
+    try:
+        out["lookback_hours"] = int(job.get("lookback_hours") or scope.get("lookback_hours") or 48)
+    except (TypeError, ValueError):
+        out["lookback_hours"] = 48
+    for field in ("trigger_type", "radar_id", "anchor_page", "source_signal_summary", "discovery_cycle_date"):
+        out[field] = job.get(field)
     # job_type may not be stored in Sheet; runner requires it
     if not out.get("job_type"):
         out["job_type"] = "GAME_WIDE_SOCIAL_DISCOVERY"
