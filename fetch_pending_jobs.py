@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parent
 PENDING_JOBS_URL = (
     "https://script.google.com/macros/s/"
     "AKfycbwILJmfmk_PRtjgGffPzX1ZebnGTf9TzAbinkalMNBu5y4PsMbW4L_IdeJJTYGOuQzf"
-    "/exec?action=pendingResearchJobs"
+    "/exec?action=pendingActionResearchJobs"
 )
 CONTRACT_FIELDS = (
     "job_id",
@@ -36,7 +36,12 @@ CONTRACT_FIELDS = (
     "source_query",
     "created_at",
 )
-OPTIONAL_FIELDS = ("related_queries",)
+OPTIONAL_FIELDS = (
+    "related_queries",
+    "research_type",
+    "source_action",
+    "action_context",
+)
 
 
 def write_json(path: Path, payload: Any) -> None:
