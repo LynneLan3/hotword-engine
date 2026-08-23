@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import html as html_lib
 import json
+import os
 import re
 import ssl
 import urllib.error
@@ -24,6 +25,7 @@ SOURCE_GOOGLE_AUTOCOMPLETE = "GOOGLE_AUTOCOMPLETE"
 SOURCE_GOOGLE_PAA = "GOOGLE_PAA"
 SOURCE_GOOGLE_RELATED = "GOOGLE_RELATED"
 SOURCE_BING_AUTOCOMPLETE = "BING_AUTOCOMPLETE"
+SOURCE_SEARCHAPI_GOOGLE_ORGANIC = "SEARCHAPI_GOOGLE_ORGANIC"
 
 SOURCES = (
     SOURCE_GOOGLE_AUTOCOMPLETE,
@@ -35,6 +37,9 @@ SOURCES = (
 KIND_SUGGESTION = "suggestion"
 KIND_QUESTION = "question"
 KIND_RELATED_QUERY = "related_query"
+KIND_ORGANIC_RESULT = "organic_result"
+
+SEARCHAPI_SEARCH_ENDPOINT = "https://www.searchapi.io/api/v1/search"
 
 UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -396,6 +401,23 @@ def bing_autocomplete_url(query: str) -> str:
     return "https://api.bing.com/osjson.aspx?" + urllib.parse.urlencode({"query": query})
 
 
+def searchapi_google_organic_url(
+    query: str,
+    hl: str = "en",
+    gl: str = "us",
+    device: str = "desktop",
+) -> str:
+    return SEARCHAPI_SEARCH_ENDPOINT + "?" + urllib.parse.urlencode(
+        {
+            "engine": "google",
+            "q": query,
+            "gl": gl,
+            "hl": hl,
+            "device": device,
+        }
+    )
+
+
 def probe_google_autocomplete(
     query: str,
     seed_terms: list[str] | None = None,
@@ -584,6 +606,132 @@ def probe_bing_autocomplete(
         query,
         items=items,
         metadata=meta,
+    )
+
+
+def probe_searchapi_google_organic(
+    query: str,
+    seed_terms: list[str] | None = None,
+    anchor_topic: str = "classes",
+    fetch_fn: FetchFn | None = None,
+    api_key: str | None = None,
+    hl: str = "en",
+    gl: str = "us",
+    device: str = "desktop",
+) -> dict[str, Any]:
+    """Probe SearchApi's paid Google organic SERP provider.
+
+    The provider is intentionally not registered in SOURCES/PROBES. Callers
+    must opt in explicitly so ordinary provider probes cannot spend credits.
+    """
+    key = api_key if api_key is not None else os.environ.get("SEARCHAPI_API_KEY")
+    url = searchapi_google_organic_url(query, hl=hl, gl=gl, device=device)
+    metadata = {
+        "http_status": 0,
+        "locale": {"hl": hl, "gl": gl},
+        "device": device,
+        "organic_count": 0,
+        "endpoint": url,
+    }
+    if not str(key or "").strip():
+        return provider_result(
+            SOURCE_SEARCHAPI_GOOGLE_ORGANIC,
+            STATUS_UNAVAILABLE,
+            query,
+            error="missing_searchapi_api_key",
+            metadata=metadata,
+        )
+
+    resp = _fetch(
+        fetch_fn,
+        url,
+        headers={
+            "Authorization": f"Bearer {key}",
+            "Accept": "application/json",
+        },
+    )
+    metadata["http_status"] = resp["status"]
+    if not resp["ok"] or not 200 <= resp["status"] < 300:
+        return provider_result(
+            SOURCE_SEARCHAPI_GOOGLE_ORGANIC,
+            STATUS_UNAVAILABLE,
+            query,
+            error="searchapi_http_error",
+            metadata=metadata,
+        )
+
+    try:
+        payload = json.loads(resp["body"])
+    except (TypeError, ValueError):
+        return provider_result(
+            SOURCE_SEARCHAPI_GOOGLE_ORGANIC,
+            STATUS_UNAVAILABLE,
+            query,
+            error="invalid_searchapi_json",
+            metadata=metadata,
+        )
+
+    if not isinstance(payload, dict):
+        return provider_result(
+            SOURCE_SEARCHAPI_GOOGLE_ORGANIC,
+            STATUS_UNAVAILABLE,
+            query,
+            error="invalid_searchapi_payload",
+            metadata=metadata,
+        )
+    search_metadata = payload.get("search_metadata")
+    search_status = search_metadata.get("status") if isinstance(search_metadata, dict) else None
+    if payload.get("error") or str(payload.get("status") or search_status or "").lower() == "error":
+        return provider_result(
+            SOURCE_SEARCHAPI_GOOGLE_ORGANIC,
+            STATUS_UNAVAILABLE,
+            query,
+            error="searchapi_error_response",
+            metadata=metadata,
+        )
+    organic_results = payload.get("organic_results")
+    if not isinstance(organic_results, list):
+        return provider_result(
+            SOURCE_SEARCHAPI_GOOGLE_ORGANIC,
+            STATUS_UNAVAILABLE,
+            query,
+            error="missing_searchapi_organic_results",
+            metadata=metadata,
+        )
+
+    terms = seed_terms or [query]
+    items: list[dict[str, Any]] = []
+    for index, result in enumerate(organic_results, start=1):
+        if not isinstance(result, dict):
+            continue
+        title = " ".join(str(result.get("title") or "").split()).strip()
+        link = str(result.get("link") or result.get("url") or "").strip()
+        domain = str(result.get("domain") or "").strip()
+        if not domain and link:
+            domain = urllib.parse.urlparse(link).netloc
+        snippet = " ".join(str(result.get("snippet") or "").split()).strip()
+        position = result.get("position", index)
+        items.append(
+            {
+                "kind": KIND_ORGANIC_RESULT,
+                "text": title,
+                "position": position,
+                "title": title,
+                "domain": domain,
+                "url": link,
+                "snippet": snippet,
+                "matched_seed_terms": matched_seed_terms(f"{title} {snippet}", terms),
+                "anchor_relevant": is_anchor_relevant(f"{title} {snippet}", anchor_topic),
+            }
+        )
+
+    metadata["organic_count"] = len(items)
+    return provider_result(
+        SOURCE_SEARCHAPI_GOOGLE_ORGANIC,
+        STATUS_SUPPORTED,
+        query,
+        items=items,
+        metadata=metadata,
     )
 
 

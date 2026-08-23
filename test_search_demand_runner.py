@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
@@ -47,6 +48,66 @@ def _job(**overrides) -> dict:
 
 def _osjson(query: str, suggestions: list[str]) -> str:
     return json.dumps([query, suggestions])
+
+
+def _project_pitt_serp_results() -> list[dict]:
+    results = [
+        {
+            "position": position,
+            "title": f"Project P.I.T.T. YouTube video {position}",
+            "domain": "youtube.com",
+            "url": f"https://www.youtube.com/watch?v=pitt{position}",
+            "snippet": "Project P.I.T.T. gameplay video",
+        }
+        for position in range(1, 5)
+    ]
+    results.extend(
+        [
+            {
+                "position": 5,
+                "title": "Project P.I.T.T. on Steam",
+                "domain": "store.steampowered.com",
+                "url": "https://store.steampowered.com/app/pitt",
+                "snippet": "Project P.I.T.T. official store page",
+            },
+            {
+                "position": 6,
+                "title": "Project P.I.T.T. discussion",
+                "domain": "reddit.com",
+                "url": "https://www.reddit.com/r/pitt",
+                "snippet": "Project P.I.T.T. player discussion",
+            },
+            {
+                "position": 7,
+                "title": "Project P.I.T.T. community thread",
+                "domain": "steamcommunity.com",
+                "url": "https://steamcommunity.com/app/pitt",
+                "snippet": "Project P.I.T.T. community post",
+            },
+            {
+                "position": 8,
+                "title": "Project P.I.T.T. Guide",
+                "domain": "pitt-guides.example.com",
+                "url": "https://pitt-guides.example.com/project-pitt-guide",
+                "snippet": "Walkthrough and tips for Project P.I.T.T.",
+            },
+            {
+                "position": 9,
+                "title": "RAS@Pitt: Home",
+                "domain": "raspitt.org",
+                "url": "https://raspitt.org/home",
+                "snippet": "A separate Pitt organization",
+            },
+            {
+                "position": 10,
+                "title": "Project P.I.T.T. database",
+                "domain": "pitt-database.example.com",
+                "url": "https://pitt-database.example.com/project-pitt",
+                "snippet": "Project P.I.T.T. reference database",
+            },
+        ]
+    )
+    return results
 
 
 class RecordingFetch:
@@ -157,6 +218,235 @@ class AnchorGateTests(unittest.TestCase):
 
 
 class RunnerSemanticsTests(unittest.TestCase):
+    def _searchapi_probe(self, calls: list[str], *, status=sdp.STATUS_SUPPORTED, items=None):
+        def probe(query, **kwargs):
+            calls.append(query)
+            if status != sdp.STATUS_SUPPORTED:
+                return sdp.provider_result(
+                    sdp.SOURCE_SEARCHAPI_GOOGLE_ORGANIC,
+                    status,
+                    query,
+                    error="searchapi_http_error",
+                    metadata={"http_status": 402},
+                )
+            return sdp.provider_result(
+                sdp.SOURCE_SEARCHAPI_GOOGLE_ORGANIC,
+                sdp.STATUS_SUPPORTED,
+                query,
+                items=items or [],
+                metadata={"http_status": 200},
+            )
+
+        return probe
+
+    def test_17_searchapi_not_requested_is_not_executed(self) -> None:
+        calls: list[str] = []
+        fetch = RecordingFetch()
+        with mock.patch.object(
+            sdp,
+            "probe_searchapi_google_organic",
+            new=self._searchapi_probe(calls),
+        ):
+            result = sdr.run_search_demand(_job(), fetch_fn=fetch)
+        self.assertEqual(calls, [])
+        self.assertEqual(result["serp_evidence"], [])
+        self.assertEqual(result["serp_evidence_count"], 0)
+        self.assertEqual(result["serp_query_count"], 0)
+
+    def test_18_explicit_searchapi_results_are_separate_serp_evidence(self) -> None:
+        calls: list[str] = []
+        organic = [
+            {
+                "kind": sdp.KIND_ORGANIC_RESULT,
+                "position": position,
+                "title": f"Agefield High classes result {position}",
+                "domain": "example.com",
+                "url": f"https://example.com/classes/{position}",
+                "snippet": f"Organic snippet {position}",
+            }
+            for position in range(1, 8)
+        ]
+        fetch = RecordingFetch(
+            google=["Agefield High walkthrough"],
+            bing=["Agefield High review"],
+        )
+        job = _job(
+            seed_terms=[SEED_ANCHOR],
+            search_sources_requested=[
+                sdp.SOURCE_GOOGLE_AUTOCOMPLETE,
+                sdp.SOURCE_BING_AUTOCOMPLETE,
+                sdp.SOURCE_SEARCHAPI_GOOGLE_ORGANIC,
+            ],
+        )
+        with mock.patch.object(
+            sdp,
+            "probe_searchapi_google_organic",
+            new=self._searchapi_probe(calls, items=organic),
+        ):
+            result = sdr.run_search_demand(job, fetch_fn=fetch)
+
+        self.assertEqual(calls, [SEED_ANCHOR])
+        self.assertEqual(result["serp_query_count"], 1)
+        self.assertEqual(result["serp_evidence_count"], 7)
+        serp = result["serp_evidence"][0]
+        self.assertEqual(serp["source"], sdp.SOURCE_SEARCHAPI_GOOGLE_ORGANIC)
+        self.assertEqual(serp["query"], SEED_ANCHOR)
+        self.assertEqual(serp["status"], sdp.STATUS_SUPPORTED)
+        self.assertEqual(serp["organic_count"], 7)
+        self.assertEqual(
+            serp["results"][0],
+            {
+                "position": 1,
+                "title": "Agefield High classes result 1",
+                "domain": "example.com",
+                "url": "https://example.com/classes/1",
+                "snippet": "Organic snippet 1",
+            },
+        )
+        self.assertEqual(result["provider_status"][sdp.SOURCE_SEARCHAPI_GOOGLE_ORGANIC], {
+            "status": sdp.STATUS_SUPPORTED,
+            "error": None,
+            "http_status": 200,
+        })
+        self.assertEqual(result["all_evidence_count"], 2)
+        self.assertEqual(result["anchor_evidence"], [])
+        self.assertEqual(result["background_evidence"], result["all_evidence"])
+        self.assertEqual(result["matched_queries"], [])
+        self.assertEqual(result["search_sources"], [])
+        self.assertEqual(result["search_evidence_count"], 0)
+        self.assertEqual(result["search_demand_status"], sdr.STATUS_NO_SIGNAL)
+        self.assertEqual(result["serp_competition_summary_count"], 1)
+        self.assertEqual(result["serp_competition_summaries"][0]["organic_count"], 7)
+        self.assertNotIn("category", result["serp_evidence"][0]["results"][0])
+        self.assertNotIn("game_relevant", result["serp_evidence"][0]["results"][0])
+
+    def test_19_searchapi_alone_cannot_confirm_or_change_failed_demand(self) -> None:
+        calls: list[str] = []
+        organic = [{"position": 1, "title": "Agefield High classes", "text": "Agefield High classes"}]
+        job = _job(
+            search_sources_requested=[sdp.SOURCE_SEARCHAPI_GOOGLE_ORGANIC],
+        )
+        with mock.patch.object(
+            sdp,
+            "probe_searchapi_google_organic",
+            new=self._searchapi_probe(calls, items=organic),
+        ):
+            result = sdr.run_search_demand(job, fetch_fn=RecordingFetch())
+        self.assertEqual(calls, [SEED_GAME, SEED_ANCHOR])
+        self.assertEqual(result["serp_query_count"], 2)
+        self.assertEqual(result["serp_evidence_count"], 2)
+        self.assertEqual(result["execution_status"], sdr.EXEC_FAILED)
+        self.assertEqual(result["search_demand_status"], sdr.STATUS_NO_SIGNAL)
+        self.assertEqual(result["all_evidence"], [])
+        self.assertEqual(result["anchor_evidence"], [])
+        self.assertEqual(result["background_evidence"], [])
+        self.assertEqual(result["matched_queries"], [])
+        self.assertEqual(result["search_sources"], [])
+        self.assertEqual(result["search_evidence_count"], 0)
+        self.assertEqual(result["serp_competition_summary_count"], 2)
+
+    def test_20_searchapi_failure_does_not_change_autocomplete_success(self) -> None:
+        calls: list[str] = []
+        fetch = RecordingFetch(
+            google=["Agefield High classes"],
+            bing=["Agefield High walkthrough"],
+        )
+        job = _job(
+            seed_terms=[SEED_ANCHOR],
+            search_sources_requested=[
+                sdp.SOURCE_GOOGLE_AUTOCOMPLETE,
+                sdp.SOURCE_BING_AUTOCOMPLETE,
+                sdp.SOURCE_SEARCHAPI_GOOGLE_ORGANIC,
+            ],
+        )
+        with mock.patch.object(
+            sdp,
+            "probe_searchapi_google_organic",
+            new=self._searchapi_probe(calls, status=sdp.STATUS_UNAVAILABLE),
+        ):
+            result = sdr.run_search_demand(job, fetch_fn=fetch)
+        self.assertEqual(calls, [SEED_ANCHOR])
+        self.assertEqual(result["execution_status"], sdr.EXEC_COMPLETED)
+        self.assertEqual(result["search_demand_status"], sdr.STATUS_CONFIRMED)
+        self.assertEqual(result["serp_evidence"], [])
+        self.assertEqual(result["serp_evidence_count"], 0)
+        self.assertEqual(result["serp_query_count"], 0)
+        self.assertEqual(result["serp_competition_summaries"], [])
+        self.assertEqual(
+            result["provider_status"][sdp.SOURCE_SEARCHAPI_GOOGLE_ORGANIC]["status"],
+            sdp.STATUS_UNAVAILABLE,
+        )
+
+    def test_21_project_pitt_fixture_builds_explainable_competition_summary(self) -> None:
+        calls: list[str] = []
+        job = _job(
+            game="Project P.I.T.T.",
+            seed_terms=["Project P.I.T.T."],
+            search_sources_requested=[sdp.SOURCE_SEARCHAPI_GOOGLE_ORGANIC],
+        )
+        with mock.patch.object(
+            sdp,
+            "probe_searchapi_google_organic",
+            new=self._searchapi_probe(calls, items=_project_pitt_serp_results()),
+        ):
+            result = sdr.run_search_demand(job, fetch_fn=RecordingFetch())
+
+        self.assertEqual(calls, ["Project P.I.T.T."])
+        self.assertEqual(result["serp_evidence_count"], 10)
+        summary = result["serp_competition_summaries"][0]
+        self.assertEqual(summary["organic_count"], 10)
+        self.assertEqual(summary["relevant_result_count"], 9)
+        self.assertEqual(summary["irrelevant_result_count"], 1)
+        self.assertEqual(summary["distinct_domains"], 7)
+        self.assertEqual(summary["video_results"], 4)
+        self.assertEqual(summary["ugc_results"], 2)
+        self.assertEqual(summary["official_results"], 1)
+        self.assertEqual(summary["guide_like_results"], 1)
+        self.assertEqual(summary["other_results"], 1)
+        self.assertEqual(summary["guide_like_domains"], ["pitt-guides.example.com"])
+        self.assertEqual(summary["top_domains"][0], "youtube.com")
+        self.assertIn(sdr.SERP_SIGNAL_LOW_GUIDE_DENSITY, summary["signals"])
+        self.assertIn(sdr.SERP_SIGNAL_HIGH_VIDEO_UGC_PRESENCE, summary["signals"])
+        self.assertIn(sdr.SERP_SIGNAL_SERP_CONTAMINATION_PRESENT, summary["signals"])
+        self.assertIn(sdr.SERP_SIGNAL_OFFICIAL_RESULT_PRESENT, summary["signals"])
+        classifications = summary["result_classifications"]
+        irrelevant = [row for row in classifications if not row["game_relevant"]]
+        self.assertEqual(len(irrelevant), 1)
+        self.assertEqual(irrelevant[0]["domain"], "raspitt.org")
+        self.assertEqual(irrelevant[0]["category"], sdr.SERP_CATEGORY_OTHER)
+        self.assertEqual(result["all_evidence"], [])
+        self.assertEqual(result["anchor_evidence"], [])
+        self.assertEqual(result["background_evidence"], [])
+        self.assertEqual(result["matched_queries"], [])
+        self.assertEqual(result["search_sources"], [])
+
+    def test_22_five_relevant_guide_pages_emit_high_guide_density(self) -> None:
+        calls: list[str] = []
+        guides = [
+            {
+                "position": position,
+                "title": f"Project P.I.T.T. Guide {position}",
+                "domain": f"guide{position}.example.com",
+                "url": f"https://guide{position}.example.com/project-pitt-guide",
+                "snippet": "Walkthrough tips and achievement guide",
+            }
+            for position in range(1, 6)
+        ]
+        job = _job(
+            game="Project P.I.T.T.",
+            seed_terms=["Project P.I.T.T."],
+            search_sources_requested=[sdp.SOURCE_SEARCHAPI_GOOGLE_ORGANIC],
+        )
+        with mock.patch.object(
+            sdp,
+            "probe_searchapi_google_organic",
+            new=self._searchapi_probe(calls, items=guides),
+        ):
+            result = sdr.run_search_demand(job, fetch_fn=RecordingFetch())
+        summary = result["serp_competition_summaries"][0]
+        self.assertEqual(summary["guide_like_results"], 5)
+        self.assertIn(sdr.SERP_SIGNAL_HIGH_GUIDE_DENSITY, summary["signals"])
+
     def test_6_google_bing_same_suggestion_deduped_with_provenance(self) -> None:
         fetch = RecordingFetch(
             google=["Agefield High classes"],

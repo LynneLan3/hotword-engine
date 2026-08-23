@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import json
+import os
 import unittest
+from unittest import mock
 
 import search_demand_providers as sdp
 
@@ -50,6 +52,132 @@ class NetworkErrorTests(unittest.TestCase):
         row = sdp.probe_bing_autocomplete("q", fetch_fn=fetch)
         self.assertEqual(row["status"], sdp.STATUS_UNAVAILABLE)
         self.assertEqual(row["metadata"]["http_status"], 500)
+
+
+class SearchApiProviderTests(unittest.TestCase):
+    def test_google_organic_success_parses_natural_result_count(self) -> None:
+        secret = "searchapi-test-secret"
+        organic = [
+            {
+                "position": position,
+                "title": f"Result {position}",
+                "domain": "example.com",
+                "link": f"https://example.com/{position}",
+                "snippet": f"Snippet {position}",
+            }
+            for position in range(1, 8)
+        ]
+        calls = []
+
+        def fetch(url, headers=None):
+            calls.append((url, headers))
+            return {
+                "ok": True,
+                "status": 200,
+                "body": json.dumps({"status": "Success", "organic_results": organic}),
+                "url": url,
+                "error": None,
+            }
+
+        row = sdp.probe_searchapi_google_organic(
+            "project pitt automation",
+            seed_terms=["project pitt automation"],
+            fetch_fn=fetch,
+            api_key=secret,
+        )
+
+        self.assertEqual(row["status"], sdp.STATUS_SUPPORTED)
+        self.assertEqual(len(row["items"]), 7)
+        self.assertEqual(row["metadata"]["organic_count"], 7)
+        self.assertEqual(
+            {key: row["items"][0][key] for key in ("position", "title", "domain", "url")},
+            {
+                "position": 1,
+                "title": "Result 1",
+                "domain": "example.com",
+                "url": "https://example.com/1",
+            },
+        )
+        self.assertEqual(row["items"][0]["kind"], sdp.KIND_ORGANIC_RESULT)
+        self.assertEqual(row["items"][0]["text"], "Result 1")
+        self.assertEqual(row["items"][0]["snippet"], "Snippet 1")
+        self.assertEqual(calls[0][1]["Authorization"], f"Bearer {secret}")
+        self.assertNotIn(secret, calls[0][0])
+        self.assertNotIn(secret, row["metadata"])
+        self.assertNotIn(secret, json.dumps(row["metadata"]))
+        self.assertEqual(
+            row["metadata"]["locale"],
+            {"hl": "en", "gl": "us"},
+        )
+        self.assertEqual(row["metadata"]["device"], "desktop")
+        self.assertEqual(
+            sdp.SOURCE_SEARCHAPI_GOOGLE_ORGANIC not in sdp.SOURCES,
+            True,
+        )
+        self.assertNotIn(sdp.SOURCE_SEARCHAPI_GOOGLE_ORGANIC, sdp.PROBES)
+
+    def test_missing_key_does_not_fetch(self) -> None:
+        calls = []
+
+        def fetch(url, headers=None):
+            calls.append((url, headers))
+            raise AssertionError("missing key must not make a request")
+
+        with mock.patch.dict(os.environ, {}, clear=True):
+            row = sdp.probe_searchapi_google_organic("q", fetch_fn=fetch)
+
+        self.assertEqual(row["status"], sdp.STATUS_UNAVAILABLE)
+        self.assertEqual(row["error"], "missing_searchapi_api_key")
+        self.assertEqual(row["items"], [])
+        self.assertEqual(calls, [])
+
+    def test_http_error_is_unavailable_without_response_details(self) -> None:
+        def fetch(url, headers=None):
+            return {
+                "ok": False,
+                "status": 402,
+                "body": "credit problem",
+                "url": url,
+                "error": "HTTPError 402",
+            }
+
+        row = sdp.probe_searchapi_google_organic("q", fetch_fn=fetch, api_key="secret")
+        self.assertEqual(row["status"], sdp.STATUS_UNAVAILABLE)
+        self.assertEqual(row["error"], "searchapi_http_error")
+        self.assertEqual(row["items"], [])
+        self.assertNotIn("secret", json.dumps(row))
+
+    def test_invalid_json_is_unavailable(self) -> None:
+        row = sdp.probe_searchapi_google_organic(
+            "q",
+            fetch_fn=lambda url, headers=None: {
+                "ok": True,
+                "status": 200,
+                "body": "not-json",
+                "url": url,
+                "error": None,
+            },
+            api_key="secret",
+        )
+        self.assertEqual(row["status"], sdp.STATUS_UNAVAILABLE)
+        self.assertEqual(row["error"], "invalid_searchapi_json")
+        self.assertEqual(row["items"], [])
+
+    def test_searchapi_error_response_is_unavailable_without_leaking_error(self) -> None:
+        row = sdp.probe_searchapi_google_organic(
+            "q",
+            fetch_fn=lambda url, headers=None: {
+                "ok": True,
+                "status": 200,
+                "body": json.dumps({"error": "invalid api key"}),
+                "url": url,
+                "error": None,
+            },
+            api_key="secret",
+        )
+        self.assertEqual(row["status"], sdp.STATUS_UNAVAILABLE)
+        self.assertEqual(row["error"], "searchapi_error_response")
+        self.assertNotIn("invalid api key", json.dumps(row))
 
 
 class ParseGuardTests(unittest.TestCase):

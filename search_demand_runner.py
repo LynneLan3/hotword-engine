@@ -2,6 +2,8 @@
 """R3B SEARCH_DEMAND runner.
 
 Local only: Google/Bing Autocomplete → Anchor Relevance Gate → result artifact.
+An explicitly requested SearchApi Google Organic probe is stored separately as
+SERP evidence and never participates in demand confirmation.
 
 Does not:
   - POST callbacks
@@ -16,8 +18,10 @@ import argparse
 import json
 import re
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import unquote, urlparse
 
 import demand_discovery_runner as ddr
 import search_demand_providers as sdp
@@ -44,6 +48,9 @@ ENABLED_SOURCES = (
     sdp.SOURCE_GOOGLE_AUTOCOMPLETE,
     sdp.SOURCE_BING_AUTOCOMPLETE,
 )
+SERP_SOURCES = (
+    sdp.SOURCE_SEARCHAPI_GOOGLE_ORGANIC,
+)
 DISABLED_SOURCES = (
     sdp.SOURCE_GOOGLE_PAA,
     sdp.SOURCE_GOOGLE_RELATED,
@@ -59,6 +66,74 @@ SCOPE_ANCHOR = "ANCHOR"
 SCOPE_GAME_WIDE = "GAME_WIDE"
 
 WHITELIST_ANCHOR_SOURCES = frozenset(ENABLED_SOURCES)
+
+SERP_CATEGORY_OFFICIAL = "OFFICIAL"
+SERP_CATEGORY_UGC = "UGC"
+SERP_CATEGORY_VIDEO = "VIDEO"
+SERP_CATEGORY_GUIDE_LIKE = "GUIDE_LIKE"
+SERP_CATEGORY_OTHER = "OTHER"
+SERP_CATEGORIES = (
+    SERP_CATEGORY_OFFICIAL,
+    SERP_CATEGORY_UGC,
+    SERP_CATEGORY_VIDEO,
+    SERP_CATEGORY_GUIDE_LIKE,
+    SERP_CATEGORY_OTHER,
+)
+
+SERP_SIGNAL_LOW_GUIDE_DENSITY = "LOW_GUIDE_DENSITY"
+SERP_SIGNAL_MODERATE_GUIDE_DENSITY = "MODERATE_GUIDE_DENSITY"
+SERP_SIGNAL_HIGH_GUIDE_DENSITY = "HIGH_GUIDE_DENSITY"
+SERP_SIGNAL_HIGH_VIDEO_UGC_PRESENCE = "HIGH_VIDEO_UGC_PRESENCE"
+SERP_SIGNAL_OFFICIAL_RESULT_PRESENT = "OFFICIAL_RESULT_PRESENT"
+SERP_SIGNAL_SERP_CONTAMINATION_PRESENT = "SERP_CONTAMINATION_PRESENT"
+SERP_SIGNAL_SERP_HIGHLY_CONSOLIDATED = "SERP_HIGHLY_CONSOLIDATED"
+SERP_SIGNAL_SERP_DOMAIN_DIVERSE = "SERP_DOMAIN_DIVERSE"
+
+SERP_GUIDE_DENSITY_LOW_MAX = 2
+SERP_GUIDE_DENSITY_HIGH_MIN = 5
+SERP_VIDEO_UGC_HIGH_MIN = 5
+SERP_CONSOLIDATED_DOMAIN_MIN = 5
+SERP_DOMAIN_DIVERSE_MIN = 5
+
+_SERP_GUIDE_LIKE_RE = re.compile(
+    r"(?:\bguide\b|\bwiki\b|\bwalkthrough\b|\btips?\b|\bhow\s+to\b|"
+    r"攻略|\bachievements?\b|\bendings?\b|\bbuilds?\b|\bprogression\b|"
+    r"\bcollectibles?\b|\blocations?\b|\bquests?\b|\bboss(?:es)?\b)",
+    re.I,
+)
+_SERP_DOTTED_INITIALS_RE = re.compile(
+    r"(?i)(?<![a-z0-9])(?:[a-z]\.){2,}[a-z](?:\.)?(?![a-z0-9])"
+)
+_SERP_RELEVANCE_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "at",
+        "for",
+        "from",
+        "game",
+        "guide",
+        "high",
+        "home",
+        "house",
+        "in",
+        "is",
+        "last",
+        "of",
+        "online",
+        "official",
+        "on",
+        "or",
+        "the",
+        "this",
+        "to",
+        "walkthrough",
+        "wiki",
+        "with",
+        "world",
+    }
+)
 
 FetchFn = Callable[[str, dict[str, str] | None], dict[str, Any]]
 
@@ -384,6 +459,278 @@ def _collect_autocomplete(
     return evidence, provider_status, executed_ok
 
 
+def _collect_serp_evidence(
+    job: dict[str, Any],
+    fetch_fn: FetchFn | None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Collect explicitly requested organic SERP evidence in isolation."""
+    requested = requested_sources(job)
+    serp_evidence: list[dict[str, Any]] = []
+    provider_status: dict[str, Any] = {}
+    seeds = [str(s or "").strip() for s in (job.get("seed_terms") or []) if str(s or "").strip()]
+    topic = page_topic_of(job) or "classes"
+
+    for source in SERP_SOURCES:
+        if source not in requested:
+            continue
+        any_ok = False
+        last_error = None
+        last_http = None
+        successful_http = None
+        for seed in seeds:
+            try:
+                row = sdp.probe_searchapi_google_organic(
+                    seed,
+                    seed_terms=seeds,
+                    anchor_topic=topic,
+                    fetch_fn=fetch_fn,
+                )
+            except Exception:
+                row = {
+                    "status": sdp.STATUS_UNAVAILABLE,
+                    "items": [],
+                    "error": "searchapi_probe_failed",
+                    "metadata": {"http_status": 0},
+                }
+            metadata = row.get("metadata") or {}
+            last_http = metadata.get("http_status")
+            if row.get("status") == sdp.STATUS_SUPPORTED:
+                any_ok = True
+                successful_http = last_http
+                results = []
+                for item in row.get("items") or []:
+                    if not isinstance(item, dict):
+                        continue
+                    results.append(
+                        {
+                            "position": item.get("position"),
+                            "title": item.get("title") or item.get("text") or "",
+                            "domain": item.get("domain") or "",
+                            "url": item.get("url") or "",
+                            "snippet": item.get("snippet") or "",
+                        }
+                    )
+                serp_evidence.append(
+                    {
+                        "source": source,
+                        "query": seed,
+                        "status": sdp.STATUS_SUPPORTED,
+                        "organic_count": len(results),
+                        "results": results,
+                    }
+                )
+            else:
+                last_error = str(row.get("error") or "unavailable")
+        if any_ok:
+            provider_status[source] = {
+                "status": sdp.STATUS_SUPPORTED,
+                "error": None,
+                "http_status": successful_http,
+            }
+        else:
+            provider_status[source] = {
+                "status": sdp.STATUS_UNAVAILABLE,
+                "error": last_error or ("no_seed_terms" if not seeds else "unavailable"),
+                "http_status": last_http,
+            }
+    return serp_evidence, provider_status
+
+
+def _serp_normalize(text: str) -> str:
+    def compact_dotted_initials(match: re.Match[str]) -> str:
+        return re.sub(r"[^a-z0-9]", "", match.group(0).lower())
+
+    compacted = _SERP_DOTTED_INITIALS_RE.sub(compact_dotted_initials, str(text or ""))
+    return normalize_text(compacted)
+
+
+def _serp_tokens(text: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", _serp_normalize(text))
+        if len(token) > 1
+    }
+
+
+def _serp_game_identity_tokens(game: str) -> list[str]:
+    return [
+        token
+        for token in _serp_tokens(game)
+        if token not in _SERP_RELEVANCE_STOPWORDS
+    ]
+
+
+def serp_result_game_relevant(
+    *,
+    game: str,
+    query: str,
+    title: str,
+    domain: str,
+    url: str,
+    snippet: str,
+) -> bool:
+    """Return a conservative, explainable game-identity match for a result."""
+    game_norm = _serp_normalize(game)
+    if not game_norm:
+        return False
+    result_blob = _serp_normalize(" ".join((title, domain, url, snippet)))
+    if not result_blob:
+        return False
+
+    # Full normalized game names are the strongest signal. Query is only used
+    # as context for the audit input; it must not turn a generic query token
+    # into game relevance.
+    if game_norm in result_blob:
+        return True
+
+    identity_tokens = _serp_game_identity_tokens(game)
+    result_tokens = _serp_tokens(result_blob)
+    if not identity_tokens:
+        return False
+    matched = sum(token in result_tokens for token in identity_tokens)
+    required = 1 if len(identity_tokens) == 1 else 2
+    if matched < required:
+        return False
+
+    # A multi-token match is sufficient only when it uses the game's own
+    # identity tokens. Common search-intent words are excluded above.
+    return True
+
+
+def _serp_domain(domain: str, url: str) -> str:
+    raw = str(domain or "").strip().lower()
+    if not raw and url:
+        raw = urlparse(str(url)).netloc.lower()
+    raw = raw.split("@")[-1].split(":", 1)[0].strip(".")
+    if raw.startswith("www."):
+        raw = raw[4:]
+    return raw
+
+
+def _serp_is_domain(domain: str, root: str) -> bool:
+    return domain == root or domain.endswith("." + root)
+
+
+def classify_serp_result(
+    *,
+    query: str,
+    result: dict[str, Any],
+    job: dict[str, Any],
+) -> dict[str, Any]:
+    title = str(result.get("title") or result.get("text") or "").strip()
+    domain = _serp_domain(str(result.get("domain") or ""), str(result.get("url") or ""))
+    url = str(result.get("url") or "").strip()
+    snippet = str(result.get("snippet") or "").strip()
+    guide_blob = unquote(" ".join((title, url, snippet)))
+
+    # This order is intentional: YouTube is VIDEO, even if its snippet/title
+    # contains community or guide language; UGC is never double-counted.
+    if _serp_is_domain(domain, "youtube.com"):
+        category = SERP_CATEGORY_VIDEO
+    elif _serp_is_domain(domain, "reddit.com") or _serp_is_domain(domain, "steamcommunity.com"):
+        category = SERP_CATEGORY_UGC
+    elif _serp_is_domain(domain, "store.steampowered.com"):
+        category = SERP_CATEGORY_OFFICIAL
+    elif _SERP_GUIDE_LIKE_RE.search(guide_blob):
+        category = SERP_CATEGORY_GUIDE_LIKE
+    else:
+        category = SERP_CATEGORY_OTHER
+
+    game_relevant = serp_result_game_relevant(
+        game=str(job.get("game") or ""),
+        query=query,
+        title=title,
+        domain=domain,
+        url=url,
+        snippet=snippet,
+    )
+    return {
+        "position": result.get("position"),
+        "title": title,
+        "domain": domain,
+        "url": url,
+        "snippet": snippet,
+        "category": category,
+        "game_relevant": game_relevant,
+    }
+
+
+def _serp_density_signal(relevant_guide_count: int) -> str:
+    if relevant_guide_count <= SERP_GUIDE_DENSITY_LOW_MAX:
+        return SERP_SIGNAL_LOW_GUIDE_DENSITY
+    if relevant_guide_count >= SERP_GUIDE_DENSITY_HIGH_MIN:
+        return SERP_SIGNAL_HIGH_GUIDE_DENSITY
+    return SERP_SIGNAL_MODERATE_GUIDE_DENSITY
+
+
+def build_serp_competition_summary(
+    serp_evidence: dict[str, Any],
+    job: dict[str, Any],
+) -> dict[str, Any]:
+    """Build derived competition evidence without mutating raw SERP evidence."""
+    query = str(serp_evidence.get("query") or "")
+    raw_results = serp_evidence.get("results") or []
+    classified_results = [
+        classify_serp_result(query=query, result=result, job=job)
+        for result in raw_results
+        if isinstance(result, dict)
+    ]
+    relevant = [row for row in classified_results if row["game_relevant"]]
+    irrelevant = [row for row in classified_results if not row["game_relevant"]]
+    relevant_by_category = Counter(row["category"] for row in relevant)
+    all_domain_counts = Counter(row["domain"] for row in classified_results if row["domain"])
+    relevant_domain_counts = Counter(row["domain"] for row in relevant if row["domain"])
+
+    relevant_guide_domains = sorted(
+        {
+            row["domain"]
+            for row in relevant
+            if row["category"] == SERP_CATEGORY_GUIDE_LIKE and row["domain"]
+        }
+    )
+    top_domains = [
+        domain
+        for domain, _count in sorted(
+            all_domain_counts.items(),
+            key=lambda pair: (-pair[1], pair[0]),
+        )[:10]
+    ]
+    relevant_count = len(relevant)
+    guide_like_count = relevant_by_category[SERP_CATEGORY_GUIDE_LIKE]
+    video_ugc_count = (
+        relevant_by_category[SERP_CATEGORY_VIDEO]
+        + relevant_by_category[SERP_CATEGORY_UGC]
+    )
+    signals = [_serp_density_signal(guide_like_count)]
+    if video_ugc_count >= SERP_VIDEO_UGC_HIGH_MIN:
+        signals.append(SERP_SIGNAL_HIGH_VIDEO_UGC_PRESENCE)
+    if relevant_by_category[SERP_CATEGORY_OFFICIAL] > 0:
+        signals.append(SERP_SIGNAL_OFFICIAL_RESULT_PRESENT)
+    if irrelevant:
+        signals.append(SERP_SIGNAL_SERP_CONTAMINATION_PRESENT)
+    if relevant_domain_counts and max(relevant_domain_counts.values()) >= SERP_CONSOLIDATED_DOMAIN_MIN:
+        signals.append(SERP_SIGNAL_SERP_HIGHLY_CONSOLIDATED)
+    if len(relevant_domain_counts) >= SERP_DOMAIN_DIVERSE_MIN:
+        signals.append(SERP_SIGNAL_SERP_DOMAIN_DIVERSE)
+
+    return {
+        "query": query,
+        "organic_count": int(serp_evidence.get("organic_count") or len(classified_results)),
+        "relevant_result_count": relevant_count,
+        "irrelevant_result_count": len(irrelevant),
+        "distinct_domains": len(all_domain_counts),
+        "official_results": relevant_by_category[SERP_CATEGORY_OFFICIAL],
+        "ugc_results": relevant_by_category[SERP_CATEGORY_UGC],
+        "video_results": relevant_by_category[SERP_CATEGORY_VIDEO],
+        "guide_like_results": guide_like_count,
+        "other_results": relevant_by_category[SERP_CATEGORY_OTHER],
+        "guide_like_domains": relevant_guide_domains,
+        "top_domains": top_domains,
+        "signals": signals,
+        "result_classifications": classified_results,
+    }
+
+
 def derive_search_demand_status(
     *,
     discovery_scope: str,
@@ -451,9 +798,17 @@ def run_search_demand(
     log(f"Search Demand job={job_id} game={job['game']!r} scope={scope_label}")
     log(f"Requested sources: {requested}")
     log(f"Enabled sources: {[s for s in requested if s in ENABLED_SOURCES]}")
+    log(f"Requested SERP sources: {[s for s in requested if s in SERP_SOURCES]}")
     log(f"Seed terms: {seeds}")
 
     raw_evidence, provider_status, executed_ok = _collect_autocomplete(job, fetch_fn)
+    serp_evidence, serp_provider_status = _collect_serp_evidence(job, fetch_fn)
+    provider_status.update(serp_provider_status)
+    serp_competition_summaries = [
+        build_serp_competition_summary(evidence, job)
+        for evidence in serp_evidence
+        if evidence.get("status") == sdp.STATUS_SUPPORTED
+    ]
     deduped = dedupe_search_evidence(raw_evidence)
     for item in deduped:
         item["anchor_relevant"] = is_anchor_relevant_suggestion(str(item.get("suggestion") or ""), job)
@@ -502,6 +857,11 @@ def run_search_demand(
         "matched_queries": matched_queries_from(anchor_evidence) if execution_status == EXEC_COMPLETED else [],
         "top_questions": [],
         "provider_status": provider_status,
+        "serp_evidence": serp_evidence,
+        "serp_evidence_count": sum(int(e.get("organic_count") or 0) for e in serp_evidence),
+        "serp_query_count": len(serp_evidence),
+        "serp_competition_summaries": serp_competition_summaries,
+        "serp_competition_summary_count": len(serp_competition_summaries),
         "result_path": rel_path,
         "input": {
             "job_id": job["job_id"],
