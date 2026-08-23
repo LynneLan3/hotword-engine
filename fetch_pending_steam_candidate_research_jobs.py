@@ -13,6 +13,7 @@ the real endpoint.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -20,11 +21,8 @@ from pathlib import Path
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parent
-PENDING_STEAM_CANDIDATE_RESEARCH_JOBS_URL = (
-    "https://script.google.com/macros/s/"
-    "AKfycbwILJmfmk_PRtjgGffPzX1ZebnGTf9TzAbinkalMNBu5y4PsMbW4L_IdeJJTYGOuQzf"
-    "/exec?action=pendingSteamCandidateResearchJobs"
-)
+STEAM_CANDIDATE_RESEARCH_API_URL_ENV = "STEAM_CANDIDATE_RESEARCH_API_URL"
+PENDING_ACTION = "pendingSteamCandidateResearchJobs"
 
 CONTRACT_FIELDS = (
     "job_id",
@@ -48,10 +46,22 @@ def write_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def configured_steam_candidate_research_api_url() -> str:
+    base_url = str(os.environ.get(STEAM_CANDIDATE_RESEARCH_API_URL_ENV) or "").strip()
+    if not base_url:
+        raise SystemExit(
+            f"{STEAM_CANDIDATE_RESEARCH_API_URL_ENV} is not set; "
+            "refusing to use a fallback endpoint"
+        )
+    separator = "&" if "?" in base_url else "?"
+    return f"{base_url}{separator}action={PENDING_ACTION}"
+
+
 def fetch_pending_steam_candidate_research_jobs(
-    url: str = PENDING_STEAM_CANDIDATE_RESEARCH_JOBS_URL,
+    url: str | None = None,
     fetch_fn: FetchFn | None = None,
 ) -> dict[str, Any]:
+    url = url or configured_steam_candidate_research_api_url()
     if fetch_fn is not None:
         payload = fetch_fn(url)
     else:
