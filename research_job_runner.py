@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import traceback
 import urllib.error
@@ -38,6 +39,11 @@ REQUIRED_FIELDS = (
     "created_at",
 )
 CALLBACK_TIMEOUT_SEC = 45
+ACTION_RESEARCH_TYPES = {
+    "NEW_INTENT_RESEARCH",
+    "PAGE_OPTIMIZATION_RESEARCH",
+    "CANNIBALIZATION_RESEARCH",
+}
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
@@ -92,6 +98,7 @@ def status_payload(
 ) -> dict[str, Any]:
     out: dict[str, Any] = {
         "job_id": job["job_id"],
+        "research_type": str(job.get("research_type") or "CONTENT_RESEARCH").strip().upper(),
         "status": status,
         "started_at": started_at,
         "finished_at": finished_at,
@@ -102,6 +109,97 @@ def status_payload(
     if error:
         out["error"] = error
     return out
+
+
+def _as_list(value: Any) -> list[Any]:
+    if value is None or value == "":
+        return []
+    if isinstance(value, list):
+        return value
+    return [value]
+
+
+def _text_list(value: Any) -> list[str]:
+    out: list[str] = []
+    for item in _as_list(value):
+        if isinstance(item, dict):
+            item = item.get("query") or item.get("question") or item.get("title") or item.get("text")
+        text = str(item or "").strip()
+        if text and text not in out:
+            out.append(text)
+    return out
+
+
+def _context_queries(context: dict[str, Any], research_type: str) -> list[str]:
+    queries = _text_list(context.get("clusterQueries"))
+    for cluster in _as_list(context.get("clusters")):
+        if isinstance(cluster, dict):
+            for query in _text_list(cluster.get("queries")):
+                if query not in queries:
+                    queries.append(query)
+    return queries
+
+
+def build_content_decision(job: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    """Turn the existing runner result into the M1 structured decision contract."""
+    research_type = str(job.get("research_type") or "CONTENT_RESEARCH").strip().upper()
+    context = job.get("action_context") if isinstance(job.get("action_context"), dict) else {}
+    recommendation = result.get("recommendation") if isinstance(result.get("recommendation"), dict) else {}
+    recommendation_action = str(recommendation.get("action") or "").strip().upper()
+    evidence = list(result.get("evidence") or []) if isinstance(result.get("evidence"), list) else []
+    evidence_count = len(evidence)
+    if research_type == "NEW_INTENT_RESEARCH":
+        if recommendation_action == "NEW_CONTENT":
+            primary = "CREATE_NEW_PAGE"
+        elif recommendation_action == "EXPAND_EXISTING":
+            primary = "EXPAND_EXISTING"
+        else:
+            primary = "WATCH"
+    elif research_type == "PAGE_OPTIMIZATION_RESEARCH":
+        primary = "WATCH" if recommendation_action == "WATCH" or evidence_count < 3 else "EXPAND_EXISTING"
+    elif research_type == "CANNIBALIZATION_RESEARCH":
+        primary = "WATCH" if evidence_count < 3 else "KEEP_BOTH"
+    else:
+        primary = "WATCH"
+
+    secondary: list[str] = []
+    gaps = result.get("content_gaps") if isinstance(result.get("content_gaps"), list) else []
+    if research_type == "PAGE_OPTIMIZATION_RESEARCH" and gaps and primary != "WATCH":
+        secondary.append("ADD_FAQ")
+        if any(re.search(r"\b(how|where|find|use|summon|location|step)", str(gap.get("player_question") or "").lower()) for gap in gaps if isinstance(gap, dict)):
+            secondary.append("ADD_STEPS")
+
+    target_queries = _context_queries(context, research_type)
+    if not target_queries:
+        target_queries = _text_list(result.get("most_asked_questions"))
+    sections = []
+    for gap in gaps:
+        if not isinstance(gap, dict):
+            continue
+        section = str(gap.get("discovered_topic") or gap.get("player_question") or "").strip()
+        if section and section not in sections:
+            sections.append(section)
+    reason = str(recommendation.get("reason") or "").strip()
+    if research_type == "CANNIBALIZATION_RESEARCH":
+        pages = _as_list(context.get("competingPages"))
+        reason = (reason + " " if reason else "") + f"Compared {len(pages)} competing page signals; content overlap requires page-level review.".strip()
+    if research_type == "PAGE_OPTIMIZATION_RESEARCH":
+        reason = (reason + " " if reason else "") + "Page metrics and all visible Query Cluster context were supplied to the research runner."
+    confidence = "HIGH" if evidence_count >= 5 and primary != "WATCH" else "MEDIUM" if evidence_count >= 2 else "LOW"
+    return {
+        "research_type": research_type,
+        "source_action": str(job.get("source_action") or context.get("sourceAction") or "").strip(),
+        "primary_decision": primary,
+        "secondary_actions": secondary,
+        "decision_reason": reason,
+        "evidence_summary": str(result.get("review_summary") or reason).strip(),
+        "evidence_count": evidence_count,
+        "target_queries": target_queries,
+        "recommended_sections": sections,
+        "recommended_title_change": "" if primary == "WATCH" else "Align title/snippet with the highest-impression target queries.",
+        "recommended_internal_links": [],
+        "confidence": confidence,
+    }
 
 
 def review_summary_from_result(result: dict[str, Any] | None) -> str:
@@ -128,18 +226,23 @@ def build_callback_body(
     status: dict[str, Any],
     *,
     result: dict[str, Any] | None = None,
+    job: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     job_id = str(status["job_id"]).strip()
     status_enum = str(status.get("status") or "").strip().upper()
+    research_type = str(status.get("research_type") or "").strip().upper()
     if status_enum == "FAILED":
-        return {
+        body = {
             "job_id": job_id,
             "status": "FAILED",
             "error": str(status.get("error") or "research_job_failed")[:300],
         }
+        if research_type and research_type != "CONTENT_RESEARCH":
+            body["research_type"] = research_type
+        return body
     if status_enum == "WATCH":
         # No evidence payload — Apps Script must not write「研究审核」.
-        return {
+        body = {
             "job_id": job_id,
             "status": "WATCH",
             "recommendation": recommendation_action(status.get("recommendation"))
@@ -149,7 +252,11 @@ def build_callback_body(
                 status.get("result_path") or relative_result_path(job_id)
             ),
             "review_summary": review_summary_from_result(result),
+            "content_decision": build_content_decision(job, result or {}) if job else None,
         }
+        if research_type and research_type != "CONTENT_RESEARCH":
+            body["research_type"] = research_type
+        return body
     body: dict[str, Any] = {
         "job_id": job_id,
         "status": "REVIEW",
@@ -159,6 +266,10 @@ def build_callback_body(
         "review_summary": review_summary_from_result(result),
         "evidence": evidence_from_result(result),
     }
+    if research_type and research_type != "CONTENT_RESEARCH":
+        body["research_type"] = research_type
+    if job:
+        body["content_decision"] = build_content_decision(job, result or {})
     return body
 
 
@@ -189,9 +300,10 @@ def post_research_callback(
     status: dict[str, Any],
     *,
     result: dict[str, Any] | None = None,
+    job: dict[str, Any] | None = None,
 ) -> bool:
     """POST REVIEW/WATCH/FAILED to Google Sheet callback. Never mutates local artifacts."""
-    body = build_callback_body(status, result=result)
+    body = build_callback_body(status, result=result, job=job)
     return post_callback_body(body)
 
 
@@ -301,6 +413,8 @@ def run_job(job_path: Path) -> dict[str, Any]:
             reuse=None,
         )
         result = rr.run(args)
+        if str(job.get("research_type") or "").strip().upper() in ACTION_RESEARCH_TYPES:
+            result["content_decision"] = build_content_decision(job, result)
         write_json(result_path, result)
         evidence_count = len(result.get("evidence") or [])
         finished_status = resolve_finished_status(
@@ -322,7 +436,7 @@ def run_job(job_path: Path) -> dict[str, Any]:
         else:
             rr.log("Status           REVIEW  (waiting for human review)")
         rr.log(f"Wrote            {result_path}")
-        callback_ok = post_research_callback(finished, result=result)
+        callback_ok = post_research_callback(finished, result=result, job=job)
         finished_out = dict(finished)
         finished_out["callback_ok"] = callback_ok
         return finished_out
