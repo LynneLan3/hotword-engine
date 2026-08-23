@@ -148,6 +148,9 @@ def build_content_decision(job: dict[str, Any], result: dict[str, Any]) -> dict[
     recommendation_action = str(recommendation.get("action") or "").strip().upper()
     evidence = list(result.get("evidence") or []) if isinstance(result.get("evidence"), list) else []
     evidence_count = len(evidence)
+    topic_relevant_count = int(
+        result.get("topic_relevant_evidence_count") or evidence_count
+    )
     if research_type == "NEW_INTENT_RESEARCH":
         if recommendation_action == "NEW_CONTENT":
             primary = "CREATE_NEW_PAGE"
@@ -185,7 +188,10 @@ def build_content_decision(job: dict[str, Any], result: dict[str, Any]) -> dict[
         reason = (reason + " " if reason else "") + f"Compared {len(pages)} competing page signals; content overlap requires page-level review.".strip()
     if research_type == "PAGE_OPTIMIZATION_RESEARCH":
         reason = (reason + " " if reason else "") + "Page metrics and all visible Query Cluster context were supplied to the research runner."
-    confidence = "HIGH" if evidence_count >= 5 and primary != "WATCH" else "MEDIUM" if evidence_count >= 2 else "LOW"
+    if research_type == "PAGE_OPTIMIZATION_RESEARCH" and topic_relevant_count < 3:
+        confidence = "LOW"
+    else:
+        confidence = "HIGH" if evidence_count >= 5 and primary != "WATCH" else "MEDIUM" if evidence_count >= 2 else "LOW"
     return {
         "research_type": research_type,
         "source_action": str(job.get("source_action") or context.get("sourceAction") or "").strip(),
@@ -400,6 +406,9 @@ def run_job(job_path: Path) -> dict[str, Any]:
     rr.log(f"Job dir          {job_dir}")
 
     try:
+        research_type = str(job.get("research_type") or "").strip().upper()
+        action_context = job.get("action_context") if isinstance(job.get("action_context"), dict) else {}
+        context_queries = _context_queries(action_context, research_type)
         args = argparse.Namespace(
             game=job["game"],
             topic=job["topic"],
@@ -407,6 +416,8 @@ def run_job(job_path: Path) -> dict[str, Any]:
             steam_appid=None,
             source_query=str(job.get("source_query") or "").strip(),
             related_queries=list(job.get("related_queries") or []),
+            context_queries=context_queries,
+            research_type=research_type,
             out=str(result_path),
             reuse=None,
         )

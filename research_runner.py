@@ -188,6 +188,21 @@ Claim The Flayed Harbinger in the full game at launch on August 20, 2026.
 Tiel and other Shells reset. Save transfer is not the same as beta rewards.
 """
 
+ACTION_RESEARCH_PAGE_OPTIMIZATION = "PAGE_OPTIMIZATION_RESEARCH"
+_ACTIVE_RESEARCH_TYPE = ""
+LEGACY_BETA_INTENT_MARKERS = (
+    "beta",
+    "carry over",
+    "save transfer",
+    "save file",
+    "progress carry",
+    "beta reward",
+    "beta bonus",
+    "flayed harbinger",
+    "prologue skip",
+    "skip prologue",
+)
+
 QUESTION_CUES = (
     "does ",
     "do i",
@@ -278,6 +293,53 @@ def is_mortal_shell_ii(game: str) -> bool:
     return key in {"mortal shell 2", "mortal shell ii", "mortalshell2"}
 
 
+def is_page_optimization_research(research_type: str = "") -> bool:
+    active = str(research_type or _ACTIVE_RESEARCH_TYPE or "").strip().upper()
+    return active == ACTION_RESEARCH_PAGE_OPTIMIZATION
+
+
+def is_legacy_beta_research(
+    game: str,
+    topic: str = "",
+    source_query: str = "",
+    related_queries: list[str] | None = None,
+    existing_page: str = "",
+) -> bool:
+    if not is_mortal_shell_ii(game):
+        return False
+    blob = norm(
+        " ".join(
+            [
+                str(topic or ""),
+                str(source_query or ""),
+                " ".join(str(q or "") for q in related_queries or []),
+                str(existing_page or ""),
+            ]
+        )
+    )
+    return any(marker in blob for marker in LEGACY_BETA_INTENT_MARKERS)
+
+
+def has_unbound_legacy_beta_signal(
+    text: str,
+    topic: str,
+    source_query: str = "",
+    related_queries: list[str] | None = None,
+) -> bool:
+    """Reject beta-only evidence unless the current request explicitly asks for it."""
+    evidence_text = norm(text)
+    request_text = norm(
+        " ".join(
+            [
+                str(topic or ""),
+                str(source_query or ""),
+                " ".join(str(q or "") for q in related_queries or []),
+            ]
+        )
+    )
+    return any(marker in evidence_text and marker not in request_text for marker in LEGACY_BETA_INTENT_MARKERS)
+
+
 def resolve_steam_appids(game: str, override: list[str] | None = None) -> list[str]:
     """Return confirmed Steam App IDs only. Empty means Steam must be skipped."""
     if override:
@@ -332,13 +394,42 @@ def core_terms_for(
     terms = list(
         request_topic_terms(game, topic, source_query, related_queries)
     )
-    if is_mortal_shell_ii(game):
+    if is_mortal_shell_ii(game) and not is_page_optimization_research():
         terms.extend(MS2_CORE_TERMS)
     return _unique_terms(terms)
 
 
+def request_topic_overlap(
+    text: str,
+    game: str,
+    topic: str,
+    source_query: str = "",
+    related_queries: list[str] | None = None,
+) -> bool:
+    """Deterministic token binding for Action Research evidence."""
+    request_terms = request_topic_terms(game, topic, source_query, related_queries)
+    if not request_terms:
+        return False
+    game_tokens: set[str] = set()
+    for alias in game_aliases(game):
+        game_tokens.update(tokens(alias))
+    text_tokens = tokens(text)
+    for term in request_terms:
+        term_tokens = tokens(term) - game_tokens
+        if not term_tokens:
+            continue
+        # One distinctive query/entity token is enough for a short intent such
+        # as "difficulty"; phrases still match exactly through has_core_topic.
+        if text_tokens & term_tokens:
+            return True
+    return False
+
+
 def topic_rules_for(game: str, topic: str) -> list[tuple[str, tuple[str, ...]]]:
-    if is_mortal_shell_ii(game):
+    if is_page_optimization_research():
+        topic_terms = request_topic_terms(game, topic)
+        return [("topic_match", topic_terms)] if topic_terms else []
+    if is_mortal_shell_ii(game) and not is_page_optimization_research():
         return list(MS2_TOPIC_RULES)
     rules: list[tuple[str, tuple[str, ...]]] = []
     topic_terms = request_topic_terms(game, topic)
@@ -356,7 +447,9 @@ def topic_rules_for(game: str, topic: str) -> list[tuple[str, tuple[str, ...]]]:
 
 
 def page_related_topics_for(game: str) -> set[str]:
-    if is_mortal_shell_ii(game):
+    if is_page_optimization_research():
+        return {"topic_match", "cross_platform"}
+    if is_mortal_shell_ii(game) and not is_page_optimization_research():
         return set(MS2_PAGE_RELATED_TOPICS)
     return {"topic_match", "cross_platform"}
 
@@ -399,11 +492,15 @@ def has_core_topic(
     terms = core_terms_for(game, topic, source_query, related_queries)
     if not terms:
         return False
-    return any(term in n for term in terms)
+    if any(term in n for term in terms):
+        return True
+    return is_page_optimization_research() and request_topic_overlap(
+        text, game, topic, source_query, related_queries
+    )
 
 
 def is_store_boilerplate(text: str, game: str = "") -> bool:
-    if not is_mortal_shell_ii(game):
+    if not is_mortal_shell_ii(game) or is_page_optimization_research():
         return False
     n = norm(text)
     return any(p in n for p in MS2_STORE_BOILERPLATE)
@@ -449,7 +546,7 @@ def is_on_topic_question(
     if has_core_topic(text, game, topic, source_query, related_queries):
         return True
     n = norm(text)
-    if is_mortal_shell_ii(game):
+    if is_mortal_shell_ii(game) and not is_page_optimization_research():
         if "save" in n and "progress" in n:
             return True
         if "skip" in n and "prologue" in n:
@@ -459,7 +556,13 @@ def is_on_topic_question(
         return False
     # Non-MS2: require overlap with this request's topic terms.
     req = request_topic_terms(game, topic, source_query, related_queries)
-    return bool(req) and any(term in n for term in req)
+    return bool(req) and (
+        any(term in n for term in req)
+        or (
+            is_page_optimization_research()
+            and request_topic_overlap(text, game, topic, source_query, related_queries)
+        )
+    )
 
 
 def is_direct_topic_answer(
@@ -470,10 +573,16 @@ def is_direct_topic_answer(
     related_queries: list[str] | None = None,
 ) -> bool:
     n = norm(text)
-    if is_mortal_shell_ii(game):
+    if is_mortal_shell_ii(game) and not is_page_optimization_research():
         return any(p in n for p in MS2_DIRECT_ANSWER_PHRASES)
     req = request_topic_terms(game, topic, source_query, related_queries)
-    return bool(req) and any(term in n for term in req)
+    return bool(req) and (
+        any(term in n for term in req)
+        or (
+            is_page_optimization_research()
+            and request_topic_overlap(text, game, topic, source_query, related_queries)
+        )
+    )
 
 
 FILTER_STATS: dict[str, dict[str, int]] = {}
@@ -568,7 +677,7 @@ def classify_invalid_evidence(
     if "cloud save" in n and not any(
         p in n for p in ("full game", "at launch", "carry over", "full release")
     ):
-        if is_mortal_shell_ii(game):
+        if is_mortal_shell_ii(game) and not is_page_optimization_research():
             return "adjacent_tech"
     if any(p in n for p in ("fast travel", "beacon to beacon")):
         return "off_topic_chat"
@@ -647,7 +756,7 @@ def discover_topic(
     for name, kws in topic_rules_for(game, topic):
         if any(kw in n for kw in kws):
             return name
-    if is_mortal_shell_ii(game):
+    if is_mortal_shell_ii(game) and not is_page_optimization_research():
         if "save" in n or "progress" in n or "carry" in n:
             return "full_save_transfer"
         if "reward" in n or "unlock" in n:
@@ -746,6 +855,11 @@ def pick_best_question(questions: list[str]) -> str:
 def compact_player_question(question: str, game: str = "") -> str:
     n = norm(question)
     game_label = game.strip() or "Game"
+    if is_page_optimization_research():
+        cleaned = clean_question_sentence(question)
+        if cleaned and not cleaned.endswith("?"):
+            cleaned += "?"
+        return cleaned[:160]
     if re.search(r"100\s*%|100 percent|completion of the beta", n) and any(
         w in n for w in ("reward", "get anything", "bonus", "unlock", "at launch")
     ):
@@ -885,6 +999,11 @@ def evidence_item(
     if is_cross_game_contamination(f"{title} {excerpt}", url, game):
         record_filter(source, "cross_game", excerpt, title)
         return None, "cross_game"
+    if is_page_optimization_research() and has_unbound_legacy_beta_signal(
+        excerpt, topic, source_query, related_queries
+    ):
+        record_filter(source, "topic_not_relevant", excerpt, title)
+        return None, "topic_not_relevant"
     invalid = classify_invalid_evidence(
         excerpt, game, topic, source_query, related_queries
     )
@@ -1142,7 +1261,7 @@ def build_search_queries(
         qs = str(q).strip()
         if qs:
             queries.append(f"{game} {qs}")
-    if is_mortal_shell_ii(game):
+    if is_mortal_shell_ii(game) and not is_page_optimization_research():
         queries.extend(
             [
                 f"{game} beta save",
@@ -1325,7 +1444,7 @@ def collect_reddit(
     related_queries: list[str] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     queries = build_search_queries(game, topic, source_query, related_queries)
-    if is_mortal_shell_ii(game):
+    if is_mortal_shell_ii(game) and not is_page_optimization_research():
         queries.extend(
             [
                 "mortal shell 2 beta save OR rewards OR carry OR cloud",
@@ -1503,7 +1622,7 @@ def collect_steam(
     search_queries = list(
         request_topic_terms(game, topic, source_query, related_queries)
     )[:6]
-    if is_mortal_shell_ii(game):
+    if is_mortal_shell_ii(game) and not is_page_optimization_research():
         search_queries.extend(
             [
                 "beta save carry reward",
@@ -1612,8 +1731,17 @@ def collect_steam(
 # Existing page + clustering
 # ---------------------------------------------------------------------------
 
-def fetch_existing_page(path: str, game: str = "") -> str:
-    # Only MS2 has a known live host + specialty fallback in this runner.
+def fetch_existing_page(
+    path: str,
+    game: str = "",
+    research_type: str = "",
+    allow_beta_fallback: bool | None = None,
+    return_status: bool = False,
+) -> str | tuple[str, str]:
+    # Only MS2 has a known live host. The beta fallback is legacy-only.
+    if allow_beta_fallback is None:
+        allow_beta_fallback = is_legacy_beta_research(game, existing_page=path)
+    page_mode = is_page_optimization_research(research_type)
     if is_mortal_shell_ii(game) or "/mortal-shell-ii/" in (path or ""):
         url = "https://mortal-shell-ii.vercel.app" + (
             path if path.startswith("/") else "/" + path
@@ -1622,16 +1750,41 @@ def fetch_existing_page(path: str, game: str = "") -> str:
             data, _ = http_get(url)
             text = strip_html(data.decode("utf-8", "ignore"))
             if len(text) > 200:
-                return text
+                result = (text, "OK")
+                return result if return_status else result[0]
         except Exception as e:
             log(f"  Live page fetch failed: {e}")
-        return MS2_EXISTING_PAGE_FALLBACK
+        if allow_beta_fallback and not page_mode:
+            result = (MS2_EXISTING_PAGE_FALLBACK, "FALLBACK_BETA")
+        else:
+            result = ("", "FAILED")
+        return result if return_status else result[0]
     log("  Existing page fallback skipped (no game-specific host configured)")
-    return ""
+    result = ("", "FAILED")
+    return result if return_status else result[0]
 
 
-def page_covers(topic_name: str, page_text: str) -> bool:
+def page_covers(
+    topic_name: str,
+    page_text: str,
+    query_text: str = "",
+    research_type: str = "",
+) -> bool:
     n = norm(page_text)
+    if is_page_optimization_research(research_type):
+        query = query_text or topic_name
+        qn = norm(query)
+        if not qn:
+            return False
+        if qn in n:
+            return True
+        qtokens = tokens(qn)
+        page_tokens = tokens(n)
+        meaningful = {t for t in qtokens if len(t) >= 3}
+        if not meaningful:
+            return False
+        overlap = len(meaningful & page_tokens)
+        return overlap >= max(1, min(2, len(meaningful)))
     checks = {
         "full_save_transfer": ("carry over", "save progress", "will not carry"),
         "inventory_reset": ("currency", "weapons", "shells", "collectibles", "reset"),
@@ -1707,7 +1860,14 @@ def cluster_questions(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
-def question_on_page(question: str, topic_name: str, page_text: str) -> bool:
+def question_on_page(
+    question: str,
+    topic_name: str,
+    page_text: str,
+    research_type: str = "",
+) -> bool:
+    if is_page_optimization_research(research_type):
+        return page_covers(topic_name, page_text, question, research_type)
     n = norm(page_text)
     qn = norm(question)
     if "uninstall" in qn or topic_name == "uninstall_keep_rewards":
@@ -1730,13 +1890,27 @@ def recommend(
     page_text: str,
     evidence_n: int,
     game: str = "",
+    research_type: str = "",
+    topic_relevant_evidence_n: int | None = None,
 ) -> dict[str, Any]:
+    page_mode = is_page_optimization_research(research_type)
+    relevant_n = evidence_n if topic_relevant_evidence_n is None else topic_relevant_evidence_n
+    if page_mode and evidence_n >= 3 and relevant_n < 3:
+        return {
+            "action": "WATCH",
+            "reason": "Insufficient topic-specific evidence",
+            "content_gaps": [],
+            "related_gap_evidence": 0,
+            "orthogonal_gap_evidence": 0,
+        }
     gaps: list[dict[str, Any]] = []
     related_gap_n = 0
     orthogonal_gap_n = 0
     related_topics = page_related_topics_for(game)
     for c in clusters:
-        covered = question_on_page(c["question"], c["discovered_topic"], page_text)
+        covered = question_on_page(
+            c["question"], c["discovered_topic"], page_text, research_type
+        )
         if covered:
             continue
         kind = "related" if c["discovered_topic"] in related_topics else "orthogonal"
@@ -1751,7 +1925,7 @@ def recommend(
                 "evidence_count": c["count"],
                 "why_missing": (
                     "Existing carry-over page does not answer this player question."
-                    if kind == "related" and is_mortal_shell_ii(game)
+                    if kind == "related" and is_mortal_shell_ii(game) and not page_mode
                     else (
                         "Existing page does not answer this player question."
                         if kind == "related"
@@ -1767,7 +1941,7 @@ def recommend(
         reason = "Too few on-topic evidence items to justify a content change."
     elif related_gap_n >= 2:
         action = "EXPAND_EXISTING"
-        if is_mortal_shell_ii(game):
+        if is_mortal_shell_ii(game) and not page_mode:
             reason = (
                 "Players are asking carry-over / rewards follow-ups that belong on the "
                 "existing beta progress page but are not currently covered."
@@ -1787,7 +1961,7 @@ def recommend(
         action = "EXPAND_EXISTING"
         reason = (
             "There are unanswered follow-ups adjacent to the existing carry-over page."
-            if is_mortal_shell_ii(game)
+            if is_mortal_shell_ii(game) and not page_mode
             else "There are unanswered follow-ups adjacent to the existing page."
         )
 
@@ -1839,8 +2013,13 @@ def make_review_summary(
 def filter_final_evidence(
     items: list[dict[str, Any]],
     game: str,
+    topic: str = "",
+    source_query: str = "",
+    related_queries: list[str] | None = None,
+    research_type: str = "",
 ) -> list[dict[str, Any]]:
-    """Hard safety net: drop evidence that is not bound to the current game."""
+    """Hard safety net: bind evidence to the game and, for action research, topic."""
+    page_mode = bool(research_type and is_page_optimization_research(research_type))
     kept: list[dict[str, Any]] = []
     confirmed_appids = set(resolve_steam_appids(game))
     for item in items:
@@ -1866,20 +2045,57 @@ def filter_final_evidence(
                 title,
             )
             continue
+        if page_mode:
+            if has_unbound_legacy_beta_signal(
+                blob, topic, source_query, related_queries
+            ):
+                record_filter(
+                    str(item.get("source") or "unknown"),
+                    "topic_not_relevant",
+                    blob,
+                    title,
+                )
+                continue
+            topic_bound = (
+                has_core_topic(blob, game, topic, source_query, related_queries)
+                or is_on_topic_question(
+                    blob, game, topic, source_query, related_queries
+                )
+                or is_direct_topic_answer(
+                    blob, game, topic, source_query, related_queries
+                )
+            )
+            if not topic_bound:
+                record_filter(
+                    str(item.get("source") or "unknown"),
+                    "topic_not_relevant",
+                    blob,
+                    title,
+                )
+                continue
+            item["topic_relevance"] = True
         kept.append(item)
     return kept
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
+    global _ACTIVE_RESEARCH_TYPE
     game = args.game
     topic = args.topic
     existing_page = args.existing_page
+    research_type = str(getattr(args, "research_type", None) or "").strip().upper()
+    _ACTIVE_RESEARCH_TYPE = research_type
     source_query = str(getattr(args, "source_query", None) or "").strip()
     related_raw = getattr(args, "related_queries", None) or []
     if isinstance(related_raw, str):
         related_queries = [q.strip() for q in related_raw.split(",") if q.strip()]
     else:
         related_queries = [str(q).strip() for q in related_raw if str(q).strip()]
+    context_raw = getattr(args, "context_queries", None) or []
+    context_queries = [str(q).strip() for q in context_raw if str(q).strip()]
+    for query in context_queries:
+        if query not in related_queries:
+            related_queries.append(query)
 
     appids = resolve_steam_appids(game, getattr(args, "steam_appid", None))
 
@@ -1936,11 +2152,38 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         evidence = dedupe_evidence(yt_items + rd_items + st_items)
 
     evidence = filter_final_evidence(evidence, game)
+    candidate_evidence_n = len(evidence)
+    if is_page_optimization_research(research_type):
+        evidence = filter_final_evidence(
+            evidence,
+            game,
+            topic,
+            source_query,
+            related_queries,
+            research_type,
+        )
+    topic_relevant_evidence_n = len(evidence)
 
     log("\n[4/4] Cluster + recommend")
-    page_text = fetch_existing_page(existing_page, game)
+    allow_beta_fallback = is_legacy_beta_research(
+        game, topic, source_query, related_queries, existing_page
+    )
+    page_text, page_fetch_status = fetch_existing_page(
+        existing_page,
+        game,
+        research_type,
+        allow_beta_fallback=allow_beta_fallback,
+        return_status=True,
+    )
     clusters = cluster_questions(evidence)
-    rec = recommend(clusters, page_text, len(evidence), game)
+    rec = recommend(
+        clusters,
+        page_text,
+        len(evidence),
+        game,
+        research_type,
+        topic_relevant_evidence_n=topic_relevant_evidence_n,
+    )
 
     source_counts = {
         "youtube": pack_source_counts(yt_counts),
@@ -1958,6 +2201,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "game": game,
             "topic": topic,
             "existing_page": existing_page,
+            "research_type": research_type,
+            "context_queries": context_queries,
         },
         "run_at": now_iso(),
         "source_counts": source_counts,
@@ -1966,6 +2211,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         "most_asked_questions": most_asked,
         "content_gaps": rec["content_gaps"],
         "recommendation": recommendation,
+        "candidate_evidence_count": candidate_evidence_n,
+        "topic_relevant_evidence_count": topic_relevant_evidence_n,
+        "page_fetch_status": page_fetch_status,
         "review_summary": make_review_summary(
             recommendation=recommendation,
             evidence=evidence,
