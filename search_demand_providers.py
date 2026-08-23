@@ -356,10 +356,18 @@ def annotate_items(
     return items
 
 
-def _fetch(fetch_fn: FetchFn | None, url: str, headers: dict[str, str] | None = None) -> dict[str, Any]:
-    fn = fetch_fn or default_http_get
+def _fetch(
+    fetch_fn: FetchFn | None,
+    url: str,
+    headers: dict[str, str] | None = None,
+    timeout: int = 12,
+) -> dict[str, Any]:
     try:
-        resp = fn(url, headers)
+        if fetch_fn is None:
+            resp = default_http_get(url, headers, timeout=timeout)
+        else:
+            # Keep injected fetchers on the existing two-argument test contract.
+            resp = fetch_fn(url, headers)
     except Exception as e:
         return {
             "ok": False,
@@ -383,6 +391,17 @@ def _fetch(fetch_fn: FetchFn | None, url: str, headers: dict[str, str] | None = 
         "url": str(resp.get("url") or url),
         "error": resp.get("error"),
     }
+
+
+def _redact_searchapi_transport_error(error: Any, api_key: str) -> str:
+    """Keep transport diagnostics useful without persisting request credentials."""
+    text = str(error or "transport failure")
+    if api_key:
+        text = text.replace(api_key, "[REDACTED]")
+        text = text.replace(f"Bearer {api_key}", "Bearer [REDACTED]")
+    text = re.sub(r"(?i)authorization\s*:\s*bearer\s+[^\s,;]+", "[REDACTED_AUTHORIZATION]", text)
+    text = re.sub(r"(?i)(api[_-]?key\s*[=:]\s*)[^\s,;&]+", r"\1[REDACTED]", text)
+    return text[:300]
 
 
 def google_autocomplete_url(query: str, hl: str = "en", gl: str = "us") -> str:
@@ -642,6 +661,8 @@ def probe_searchapi_google_organic(
             metadata=metadata,
         )
 
+    # Paid provider requests are single-attempt. Never retry a paid request:
+    # a transport failure may still have been billed by SearchApi.
     resp = _fetch(
         fetch_fn,
         url,
@@ -649,8 +670,20 @@ def probe_searchapi_google_organic(
             "Authorization": f"Bearer {key}",
             "Accept": "application/json",
         },
+        timeout=45,
     )
     metadata["http_status"] = resp["status"]
+    metadata["response_received"] = resp["status"] > 0
+    metadata["billing_status"] = "UNKNOWN"
+    if resp["status"] == 0:
+        metadata["transport_error"] = _redact_searchapi_transport_error(resp.get("error"), str(key))
+        return provider_result(
+            SOURCE_SEARCHAPI_GOOGLE_ORGANIC,
+            STATUS_UNAVAILABLE,
+            query,
+            error="searchapi_transport_error",
+            metadata=metadata,
+        )
     if not resp["ok"] or not 200 <= resp["status"] < 300:
         return provider_result(
             SOURCE_SEARCHAPI_GOOGLE_ORGANIC,

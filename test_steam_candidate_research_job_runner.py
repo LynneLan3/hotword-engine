@@ -119,8 +119,14 @@ class SteamCandidateResearchJobRunnerTests(unittest.TestCase):
                 first = wrapper.run_job(job_path, root=root, post_fn=lambda *_: {"ok": True})
             self.assertTrue(first["ok"])
 
+            fetch_calls = []
+
             def must_not_run(*_args, **_kwargs):
                 self.fail("M7A/provider must not rerun for completed artifact")
+
+            def fetch_must_not_run(*args, **kwargs):
+                fetch_calls.append((args, kwargs))
+                self.fail("SearchApi fetch must not run")
 
             with mock.patch.dict(
                 os.environ,
@@ -132,11 +138,12 @@ class SteamCandidateResearchJobRunnerTests(unittest.TestCase):
                 second = wrapper.run_job(
                     job_path,
                     root=root,
-                    fetch_fn=lambda *_: self.fail("SearchApi fetch must not run"),
+                    fetch_fn=fetch_must_not_run,
                     post_fn=lambda *_: {"ok": True},
                 )
             self.assertTrue(second["ok"])
             self.assertTrue(second["reused_research_artifact"])
+            self.assertEqual(len(fetch_calls), 0)
 
     def test_callback_failure_keeps_local_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

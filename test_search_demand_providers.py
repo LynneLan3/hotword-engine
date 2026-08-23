@@ -110,6 +110,8 @@ class SearchApiProviderTests(unittest.TestCase):
             {"hl": "en", "gl": "us"},
         )
         self.assertEqual(row["metadata"]["device"], "desktop")
+        self.assertTrue(row["metadata"]["response_received"])
+        self.assertEqual(row["metadata"]["billing_status"], "UNKNOWN")
         self.assertEqual(
             sdp.SOURCE_SEARCHAPI_GOOGLE_ORGANIC not in sdp.SOURCES,
             True,
@@ -131,6 +133,81 @@ class SearchApiProviderTests(unittest.TestCase):
         self.assertEqual(row["items"], [])
         self.assertEqual(calls, [])
 
+    def test_searchapi_default_transport_uses_45_second_timeout(self) -> None:
+        response = {
+            "ok": True,
+            "status": 200,
+            "body": json.dumps({"status": "Success", "organic_results": []}),
+            "url": "https://www.searchapi.io/api/v1/search",
+            "error": None,
+        }
+        with mock.patch.object(sdp, "default_http_get", return_value=response) as http_get:
+            row = sdp.probe_searchapi_google_organic("q", api_key="secret")
+
+        self.assertEqual(row["status"], sdp.STATUS_SUPPORTED)
+        http_get.assert_called_once()
+        self.assertEqual(http_get.call_args.kwargs["timeout"], 45)
+
+    def test_transport_errors_preserve_type_without_credentials(self) -> None:
+        secret = "searchapi-test-secret"
+        with mock.patch.object(
+            sdp,
+            "default_http_get",
+            side_effect=TimeoutError("socket timed out"),
+        ):
+            default_row = sdp.probe_searchapi_google_organic("q", api_key=secret)
+        self.assertEqual(default_row["status"], sdp.STATUS_UNAVAILABLE)
+        self.assertEqual(default_row["error"], "searchapi_transport_error")
+        self.assertEqual(default_row["metadata"]["http_status"], 0)
+        self.assertFalse(default_row["metadata"]["response_received"])
+        self.assertEqual(default_row["metadata"]["billing_status"], "UNKNOWN")
+        self.assertIn("TimeoutError", default_row["metadata"]["transport_error"])
+        self.assertNotIn(secret, json.dumps(default_row))
+
+        for exc in (
+            TimeoutError(f"Authorization: Bearer {secret}"),
+            ConnectionResetError(f"api_key={secret}"),
+        ):
+            calls = []
+
+            def fetch(url, headers=None, *, error=exc):
+                calls.append((url, headers))
+                raise error
+
+            row = sdp.probe_searchapi_google_organic("q", fetch_fn=fetch, api_key=secret)
+            self.assertEqual(row["status"], sdp.STATUS_UNAVAILABLE)
+            self.assertEqual(row["error"], "searchapi_transport_error")
+            self.assertEqual(row["metadata"]["http_status"], 0)
+            self.assertFalse(row["metadata"]["response_received"])
+            self.assertEqual(row["metadata"]["billing_status"], "UNKNOWN")
+            self.assertIn(type(exc).__name__, row["metadata"]["transport_error"])
+            self.assertNotIn(secret, json.dumps(row))
+            self.assertNotIn("Authorization", row["metadata"]["transport_error"])
+            self.assertEqual(len(calls), 1)
+
+    def test_http_failures_keep_http_error_semantics_and_do_not_retry(self) -> None:
+        for status in (500, 429):
+            calls = []
+
+            def fetch(url, headers=None, *, status=status):
+                calls.append((url, headers))
+                return {
+                    "ok": False,
+                    "status": status,
+                    "body": "provider failure",
+                    "url": url,
+                    "error": f"HTTPError {status}",
+                }
+
+            row = sdp.probe_searchapi_google_organic("q", fetch_fn=fetch, api_key="secret")
+            self.assertEqual(row["status"], sdp.STATUS_UNAVAILABLE)
+            self.assertEqual(row["error"], "searchapi_http_error")
+            self.assertEqual(row["metadata"]["http_status"], status)
+            self.assertTrue(row["metadata"]["response_received"])
+            self.assertEqual(row["metadata"]["billing_status"], "UNKNOWN")
+            self.assertNotIn("transport_error", row["metadata"])
+            self.assertEqual(len(calls), 1)
+
     def test_http_error_is_unavailable_without_response_details(self) -> None:
         def fetch(url, headers=None):
             return {
@@ -145,6 +222,9 @@ class SearchApiProviderTests(unittest.TestCase):
         self.assertEqual(row["status"], sdp.STATUS_UNAVAILABLE)
         self.assertEqual(row["error"], "searchapi_http_error")
         self.assertEqual(row["items"], [])
+        self.assertEqual(row["metadata"]["http_status"], 402)
+        self.assertTrue(row["metadata"]["response_received"])
+        self.assertEqual(row["metadata"]["billing_status"], "UNKNOWN")
         self.assertNotIn("secret", json.dumps(row))
 
     def test_invalid_json_is_unavailable(self) -> None:

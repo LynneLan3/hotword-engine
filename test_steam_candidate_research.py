@@ -176,6 +176,30 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(result["social"]["status"], "AVAILABLE")
         self.assertEqual(result["serp"]["status"], "UNAVAILABLE")
 
+    def test_serp_transport_failure_preserves_provider_metadata(self) -> None:
+        result, _social_call, _serp_call = self._run(
+            serp={
+                "status": "UNAVAILABLE",
+                "error": "searchapi_transport_error",
+                "metadata": {
+                    "http_status": 0,
+                    "transport_error": "TimeoutError: socket timed out",
+                    "response_received": False,
+                    "billing_status": "UNKNOWN",
+                },
+            }
+        )
+        self.assertEqual(result["research_status"], "COMPLETED")
+        self.assertEqual(result["serp"]["status"], "UNAVAILABLE")
+        self.assertEqual(result["serp"]["error"], "searchapi_transport_error")
+        self.assertEqual(result["serp"]["provider_metadata"]["http_status"], 0)
+        self.assertEqual(
+            result["serp"]["provider_metadata"]["transport_error"],
+            "TimeoutError: socket timed out",
+        )
+        self.assertFalse(result["serp"]["provider_metadata"]["response_received"])
+        self.assertEqual(result["serp"]["provider_metadata"]["billing_status"], "UNKNOWN")
+
     def test_both_fail_is_failed(self) -> None:
         result, _social_call, _serp_call = self._run(
             social=RuntimeError("social unavailable"),
