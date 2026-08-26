@@ -1,0 +1,61 @@
+{
+  "game_entities": [
+    {
+      "game_entity_id": "ge_c88e7df7bc02111f27fb5b0d",
+      "canonical_name": "Example Survival Game",
+      "aliases": [],
+      "developer": "Example Studio",
+      "publisher": "Example Publisher",
+      "genres": ["SURVIVAL", "ACTION"]
+    }
+  ],
+  "platform_listings": [
+    {
+      "platform_listing_id": "pl_37f6c5acb8372e939288b866",
+      "game_entity_id": "ge_c88e7df7bc02111f27fb5b0d",
+      "platform": "STEAM",
+      "platform_game_id": "1000001",
+      "store_url": "https://store.steampowered.com/app/1000001/",
+      "release_date": "2026-08-20",
+      "region": "US",
+      "listing_status": "ACTIVE"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "ev_96930fa43bf015793d404f2e",
+      "game_entity_id": "ge_c88e7df7bc02111f27fb5b0d",
+      "platform_listing_id": "pl_37f6c5acb8372e939288b866",
+      "event_type": "NEW_RELEASE",
+      "event_date": "2026-08-20",
+      "source": "STEAM_CANDIDATE",
+      "source_ref": "example-job-20260820"
+    }
+  ],
+  "signals": [
+    {
+      "signal_id": "sig_d060517f91e46f12a3d4eb5c",
+      "game_entity_id": "ge_c88e7df7bc02111f27fb5b0d",
+      "event_id": "ev_96930fa43bf015793d404f2e",
+      "platform_listing_id": "pl_37f6c5acb8372e939288b866",
+      "observed_at": "2026-08-21T09:00:00+00:00",
+      "source": "STEAM_CANDIDATE",
+      "signal_type": "STEAM_FOLLOWERS",
+      "raw_value": 1200,
+      "normalized_value": 1200,
+      "metadata": {"steam_app_id": "1000001"}
+    },
+    {
+      "signal_id": "sig_dae8e82b88de4e47ea2a4454",
+      "game_entity_id": "ge_c88e7df7bc02111f27fb5b0d",
+      "event_id": "ev_96930fa43bf015793d404f2e",
+      "platform_listing_id": "pl_37f6c5acb8372e939288b866",
+      "observed_at": "2026-08-21T09:00:00+00:00",
+      "source": "STEAM_CANDIDATE",
+      "signal_type": "STEAM_7D_GAIN",
+      "raw_value": 300,
+      "normalized_value": 300,
+      "metadata": {"steam_app_id": "1000001"}
+    }
+  ]
+}
