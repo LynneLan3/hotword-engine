@@ -1,0 +1,57 @@
+name: Steam Candidate Research Scheduler
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_jobs:
+        description: Maximum candidates to process in this run
+        required: false
+        default: '5'
+      paid_attempt_budget:
+        description: Maximum fresh SearchApi candidate attempts in this run
+        required: false
+        default: '3'
+  schedule:
+    # 01:15 UTC = 09:15 Asia/Shanghai.
+    - cron: '15 1 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: steam-candidate-research-v1
+  cancel-in-progress: false
+
+jobs:
+  run-steam-candidate-research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      SEARCHAPI_API_KEY: ${{ secrets.SEARCHAPI_API_KEY }}
+      STEAM_CANDIDATE_RESEARCH_API_URL: ${{ secrets.STEAM_CANDIDATE_RESEARCH_API_URL }}
+      STEAM_CANDIDATE_RESEARCH_CALLBACK_TOKEN: ${{ secrets.STEAM_CANDIDATE_RESEARCH_CALLBACK_TOKEN }}
+      MAX_JOBS: ${{ github.event_name == 'workflow_dispatch' && inputs.max_jobs || '5' }}
+      PAID_ATTEMPT_BUDGET: ${{ github.event_name == 'workflow_dispatch' && inputs.paid_attempt_budget || '3' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run bounded Steam Candidate Preflight V1
+        run: >-
+          python3 steam_candidate_daily_executor.py
+          --max-jobs "$MAX_JOBS"
+          --paid-attempt-budget "$PAID_ATTEMPT_BUDGET"
+
+      - name: Upload Steam Candidate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: steam-candidate-research-${{ github.run_id }}
+          path: jobs/
+          retention-days: 30
+          if-no-files-found: ignore
