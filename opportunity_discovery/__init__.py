@@ -18,6 +18,7 @@ from .schema import (
     PlatformListing,
     SchemaValidationError,
 )
+from .shadow import ShadowClassification, classify_candidate, run_steam_shadow, write_shadow_artifact
 
 __all__ = [
     "CandidateSignal",
@@ -36,4 +37,8 @@ __all__ = [
     "normalize_aliases",
     "normalize_identity_text",
     "steam_candidate_to_records",
+    "ShadowClassification",
+    "classify_candidate",
+    "run_steam_shadow",
+    "write_shadow_artifact",
 ]

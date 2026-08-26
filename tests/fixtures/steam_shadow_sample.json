@@ -1,0 +1,27 @@
+{
+  "run_id": "steam-shadow-example",
+  "observed_at": "2026-08-26T00:00:00+00:00",
+  "sources": ["Popular Upcoming", "Popular New Releases"],
+  "page_range": {"start": 1, "end": 5},
+  "http_result": "COMPLETE",
+  "baseline": {"unique_games": 1},
+  "deep": {
+    "unique_games": 2,
+    "incremental_unique_games": 2,
+    "incremental_by_page": {"p2": 1, "p3": 1, "p4": 0, "p5": 0}
+  },
+  "classification": {
+    "existing_history": 0,
+    "needs_history": 2,
+    "cheap_reject": 0,
+    "potential": 2
+  },
+  "per_source": {
+    "Popular Upcoming": {"status": "PASS", "unique_games": 2},
+    "Popular New Releases": {"status": "PASS", "unique_games": 1}
+  },
+  "incremental_candidate_sample": [
+    {"steam_app_id": "200", "game_name": "Deep Upcoming", "classification": "NEEDS_HISTORY", "source": "Popular Upcoming", "page": 2},
+    {"steam_app_id": "300", "game_name": "Deep Released", "classification": "NEEDS_HISTORY", "source": "Popular New Releases", "page": 3}
+  ]
+}
