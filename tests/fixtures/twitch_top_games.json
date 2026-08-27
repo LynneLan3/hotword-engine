@@ -1,0 +1,24 @@
+{
+  "pages": [
+    {
+      "data": [
+        {"id": "10", "name": "Fixture One", "box_art_url": "https://cdn.example/10-{width}x{height}.jpg", "igdb_id": "100"},
+        {"id": "20", "name": "Fixture Two", "box_art_url": "https://cdn.example/20-{width}x{height}.jpg", "igdb_id": ""}
+      ],
+      "pagination": {"cursor": "cursor-1"}
+    },
+    {
+      "data": [
+        {"id": "10", "name": "Fixture One", "box_art_url": "https://cdn.example/10-{width}x{height}.jpg", "igdb_id": "100"},
+        {"id": "30", "name": "Fixture Three", "box_art_url": "https://cdn.example/30-{width}x{height}.jpg", "igdb_id": "300"}
+      ],
+      "pagination": {"cursor": "cursor-2"}
+    },
+    {
+      "data": [
+        {"id": "40", "name": "Fixture Four", "box_art_url": "https://cdn.example/40-{width}x{height}.jpg", "igdb_id": "400"}
+      ],
+      "pagination": {}
+    }
+  ]
+}
