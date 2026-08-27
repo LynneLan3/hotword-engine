@@ -139,10 +139,30 @@ def run_steam_shadow(
     *,
     history_by_app_id: Mapping[str, Mapping[str, Any]] | None = None,
     sample_limit: int = 20,
+    run_id: str | None = None,
 ) -> dict[str, Any]:
     """Collect, normalize, deduplicate, classify, and return JSON-safe evidence."""
 
     observations = adapter.collect()
+    return build_steam_shadow_artifact(
+        adapter,
+        observations,
+        history_by_app_id=history_by_app_id,
+        sample_limit=sample_limit,
+        run_id=run_id,
+    )
+
+
+def build_steam_shadow_artifact(
+    adapter: SteamShadowAdapter,
+    observations: list[SteamDiscoveryObservation],
+    *,
+    history_by_app_id: Mapping[str, Mapping[str, Any]] | None = None,
+    sample_limit: int = 20,
+    run_id: str | None = None,
+) -> dict[str, Any]:
+    """Build the G002 artifact from an already-collected page set."""
+
     by_app: dict[str, _Candidate] = {}
     observations_by_page: dict[tuple[str, int], list[SteamDiscoveryObservation]] = defaultdict(list)
     for observation in observations:
@@ -214,7 +234,8 @@ def run_steam_shadow(
         http_result = "COMPLETE"
     source_status = {
         source: "PASS"
-        if all(result["status"] == "PASS" for result in page_results if result["source"] == source)
+        if len([result for result in page_results if result["source"] == source]) == (adapter.page_end - adapter.page_start + 1)
+        and all(result["status"] == "PASS" for result in page_results if result["source"] == source)
         else "FAIL"
         for source in adapter.sources
     }
@@ -224,7 +245,7 @@ def run_steam_shadow(
     event_ids = {event.event_id for records in normalized_records for event in records.events}
     signal_ids = {signal.signal_id for records in normalized_records for signal in records.signals}
     return {
-        "run_id": f"steam-shadow-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
+        "run_id": run_id or f"steam-shadow-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
         "observed_at": adapter.observed_at,
         "sources": list(adapter.sources),
         "source_status": source_status,

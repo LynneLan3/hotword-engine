@@ -1,0 +1,34 @@
+[
+  {
+    "name": "Pax Autocratica",
+    "followers": 33759,
+    "baseline_followers": 31012,
+    "gain_7d": 2747,
+    "growth_rate": 0.0813708937,
+    "expected_1b": "CONTROL"
+  },
+  {
+    "name": "Crimson Moon",
+    "followers": 12253,
+    "baseline_followers": 10254,
+    "gain_7d": 1999,
+    "growth_rate": 0.1631437199,
+    "expected_1b": "TREND"
+  },
+  {
+    "name": "Agefield High: Rock the School",
+    "followers": 14403,
+    "baseline_followers": 12604,
+    "gain_7d": 1799,
+    "growth_rate": 0.1249045338,
+    "expected_1b": "TREND"
+  },
+  {
+    "name": "BeastLink",
+    "followers": 2997,
+    "baseline_followers": 2054,
+    "gain_7d": 943,
+    "growth_rate": 0.3146479813,
+    "expected_1b": "EARLY"
+  }
+]
