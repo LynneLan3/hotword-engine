@@ -48,7 +48,7 @@ class TwitchRawObservationTests(unittest.TestCase):
         adapter, calls = self._adapter(limit=300)
         artifact = adapter.collect()
         rows = artifact["observations"]
-        self.assertEqual([row["global_rank"] for row in rows], [1, 2, 101, 102, 201])
+        self.assertEqual([row["global_rank"] for row in rows], [1, 2, 3, 4, 5])
         self.assertEqual([row["api_page"] for row in rows], [1, 1, 2, 2, 3])
         self.assertEqual(rows[1]["igdb_id"], None)
         self.assertEqual(artifact["run_metadata"]["duplicates"], 1)
@@ -60,6 +60,32 @@ class TwitchRawObservationTests(unittest.TestCase):
         self.assertNotIn("token", json.dumps(artifact).lower())
         self.assertEqual(calls[0][1], "Bearer fixture-token")
 
+    def test_pagination_is_bounded_to_300_rows_and_three_api_pages(self):
+        calls = []
+
+        def api_fetcher(url, _headers, _timeout):
+            page = len(calls) + 1
+            calls.append(url)
+            rows = [
+                {"id": f"{page}-{index}", "name": f"Game {page}-{index}", "box_art_url": "https://cdn.example/art.jpg"}
+                for index in range(100)
+            ]
+            return TwitchHttpResponse(200, json.dumps({
+                "data": rows,
+                "pagination": {"cursor": f"cursor-{page}"} if page < 3 else {"cursor": "cursor-too-many"},
+            }))
+
+        adapter = TwitchTopGamesAdapter(
+            300, run_id="bounded", observed_at="2026-08-28T00:00:00+00:00",
+            client_id="client", client_secret="secret",
+            token_fetcher=lambda *_: TwitchHttpResponse(200, '{"access_token":"fixture-token"}'),
+            api_fetcher=api_fetcher,
+        )
+        artifact = adapter.collect()
+        self.assertEqual(len(artifact["observations"]), 300)
+        self.assertEqual(artifact["run_metadata"]["pages_completed"], 3)
+        self.assertEqual(len(calls), 3)
+
     def test_partial_failure_retains_previous_pages(self):
         artifact, _ = self._adapter(fail_page=2, limit=5)
         result = artifact.collect()
@@ -70,8 +96,15 @@ class TwitchRawObservationTests(unittest.TestCase):
         self.assertEqual(result["run_metadata"]["source_errors"][0]["code"], "HTTP_ERROR")
 
     def test_auth_missing_and_auth_failed_are_not_zero_data_success(self):
-        missing = TwitchTopGamesAdapter(client_id="", client_secret="", run_id="missing").collect()
+        missing = TwitchTopGamesAdapter(
+            client_id="", client_secret="", run_id="missing",
+            observed_at="2026-08-28T00:00:00+00:00",
+        ).collect()
         self.assertEqual(missing["run_metadata"]["run_status"], "AUTH_MISSING")
+        self.assertEqual(missing["observations"], [])
+        self.assertEqual(missing["run_id"], "missing")
+        self.assertEqual(missing["observed_at"], "2026-08-28T00:00:00+00:00")
+        self.assertEqual(missing["source"], "TWITCH_HELIX_TOP_GAMES")
         failed, _ = self._adapter(token_body="{}")
         self.assertEqual(failed.collect()["run_metadata"]["run_status"], "AUTH_FAILED")
 

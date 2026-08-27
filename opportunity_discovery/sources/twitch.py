@@ -192,7 +192,7 @@ class TwitchTopGamesAdapter:
                         api_page, page_rank, twitch_game_id, name, igdb_id, box_art_url,
                     ))
                 pages_completed += 1
-                rank_offset += min(TWITCH_PAGE_SIZE, remaining)
+                rank_offset += len(rows)
                 pagination = payload.get("pagination") or {}
                 cursor = pagination.get("cursor") if isinstance(pagination, Mapping) else None
                 if not cursor or len(observations) >= self.requested_limit or not rows:
@@ -218,6 +218,8 @@ class TwitchTopGamesAdapter:
         unique_ids = set(ids)
         return {
             "run_id": self.run_id,
+            "observed_at": self.observed_at,
+            "source": self.source_name,
             "observations": [item.to_dict() for item in observations],
             "run_metadata": {
                 "requested_limit": self.requested_limit,
