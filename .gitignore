@@ -3,3 +3,18 @@ __pycache__/
 .DS_Store
 .env
 *.log
+
+# Local runtime inputs, job results, and provider cache artifacts.
+artifacts/
+input/demand_discovery_job.json
+input/pending_demand_discovery_jobs.json
+input/pending_search_demand_jobs.json
+input/pending_steam_candidate_research_jobs.json
+input/search_demand_job_live_smoke.json
+input/steam_candidate_research_job.json
+input/today_selected_steam_jobs/
+jobs/daily-steam-candidate-research-*/
+jobs/demand-*/
+jobs/search-*/
+jobs/steam-research-*/
+output/today_candidate_autocomplete_*.json
