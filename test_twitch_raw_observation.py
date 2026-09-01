@@ -54,6 +54,9 @@ class TwitchRawObservationTests(unittest.TestCase):
         self.assertEqual(artifact["run_metadata"]["duplicates"], 1)
         self.assertEqual(artifact["run_metadata"]["unique_twitch_ids"], 4)
         self.assertEqual(artifact["run_metadata"]["missing_igdb_count"], 1)
+        self.assertEqual(artifact["run_metadata"]["endpoint"], "https://api.twitch.tv/helix/games/top")
+        self.assertEqual(len(artifact["run_metadata"]["page_requests"]), 3)
+        self.assertNotIn("secret", json.dumps(artifact))
         self.assertEqual(parse_qs(urlparse(calls[1][0]).query)["after"], ["cursor-1"])
         self.assertEqual(artifact["run_metadata"]["run_status"], "COMPLETE")
         self.assertNotIn("secret", json.dumps(artifact))
@@ -85,6 +88,27 @@ class TwitchRawObservationTests(unittest.TestCase):
         self.assertEqual(len(artifact["observations"]), 300)
         self.assertEqual(artifact["run_metadata"]["pages_completed"], 3)
         self.assertEqual(len(calls), 3)
+
+    def test_server_over_return_cannot_exceed_requested_limit(self):
+        def api_fetcher(_url, _headers, _timeout):
+            return TwitchHttpResponse(200, json.dumps({
+                "data": [
+                    {"id": str(index), "name": f"Game {index}", "box_art_url": "https://cdn.example/art.jpg"}
+                    for index in range(100)
+                ],
+                "pagination": {"cursor": "cursor-ignored"},
+            }))
+
+        adapter = TwitchTopGamesAdapter(
+            3, run_id="strict-bound", observed_at="2026-08-28T00:00:00+00:00",
+            client_id="client", client_secret="secret",
+            token_fetcher=lambda *_: TwitchHttpResponse(200, '{"access_token":"fixture-token"}'),
+            api_fetcher=api_fetcher,
+        )
+        artifact = adapter.collect()
+        self.assertEqual(len(artifact["observations"]), 3)
+        self.assertEqual([row["global_rank"] for row in artifact["observations"]], [1, 2, 3])
+        self.assertEqual(artifact["run_metadata"]["requested_limit"], 3)
 
     def test_partial_failure_retains_previous_pages(self):
         artifact, _ = self._adapter(fail_page=2, limit=5)

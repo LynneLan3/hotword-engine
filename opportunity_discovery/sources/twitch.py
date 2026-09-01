@@ -147,13 +147,14 @@ class TwitchTopGamesAdapter:
     def collect(self) -> dict[str, Any]:
         observations: list[TwitchRawObservation] = []
         source_errors: list[dict[str, Any]] = []
+        page_requests: list[dict[str, Any]] = []
         pages_completed = 0
         cursor: str | None = None
         rank_offset = 0
         try:
             token = self._get_token()
         except TwitchConfigurationError as exc:
-            return self._artifact(observations, pages_completed, source_errors, str(exc))
+            return self._artifact(observations, pages_completed, page_requests, source_errors, str(exc))
 
         for api_page in range(1, TWITCH_MAX_PAGES + 1):
             remaining = self.requested_limit - len(observations)
@@ -163,6 +164,7 @@ class TwitchTopGamesAdapter:
             if cursor:
                 query["after"] = cursor
             url = f"{TWITCH_TOP_GAMES_URL}?{urlencode(query)}"
+            page_requests.append({"api_page": api_page, "url": url})
             try:
                 response = self.api_fetcher(
                     url,
@@ -176,7 +178,8 @@ class TwitchTopGamesAdapter:
                 rows = payload.get("data")
                 if not isinstance(rows, list):
                     raise ValueError("data is not an array")
-                for page_rank, row in enumerate(rows, start=1):
+                page_rows = rows[:remaining]
+                for page_rank, row in enumerate(page_rows, start=1):
                     if not isinstance(row, Mapping):
                         raise ValueError("data row is not an object")
                     twitch_game_id = str(row.get("id") or "").strip()
@@ -192,7 +195,7 @@ class TwitchTopGamesAdapter:
                         api_page, page_rank, twitch_game_id, name, igdb_id, box_art_url,
                     ))
                 pages_completed += 1
-                rank_offset += len(rows)
+                rank_offset += len(page_rows)
                 pagination = payload.get("pagination") or {}
                 cursor = pagination.get("cursor") if isinstance(pagination, Mapping) else None
                 if not cursor or len(observations) >= self.requested_limit or not rows:
@@ -205,12 +208,13 @@ class TwitchTopGamesAdapter:
                 break
 
         status = "COMPLETE" if not source_errors else ("PARTIAL" if observations else "HTTP_ERROR")
-        return self._artifact(observations, pages_completed, source_errors, status)
+        return self._artifact(observations, pages_completed, page_requests, source_errors, status)
 
     def _artifact(
         self,
         observations: list[TwitchRawObservation],
         pages_completed: int,
+        page_requests: list[dict[str, Any]],
         source_errors: list[dict[str, Any]],
         run_status: str,
     ) -> dict[str, Any]:
@@ -228,6 +232,8 @@ class TwitchTopGamesAdapter:
                 "unique_twitch_ids": len(unique_ids),
                 "duplicates": len(ids) - len(unique_ids),
                 "missing_igdb_count": sum(item.igdb_id is None for item in observations),
+                "endpoint": TWITCH_TOP_GAMES_URL,
+                "page_requests": page_requests,
                 "source_errors": source_errors,
                 "run_status": run_status,
             },
