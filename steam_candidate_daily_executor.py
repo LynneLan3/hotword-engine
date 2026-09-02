@@ -2,7 +2,7 @@
 """Bounded daily executor for Steam Candidate Research jobs.
 
 This module owns only queue selection, budget accounting, and circuit-breaker
-behavior. Each selected job is executed by the Preflight V1 executor.
+behavior. Each selected job is executed by the machine research executor.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from typing import Any, Callable
 import fetch_pending_steam_candidate_research_jobs as fetcher
 import steam_candidate_research_job_runner as runner
 import steam_candidate_preflight as preflight
-import steam_candidate_preflight_executor as preflight_executor
+import steam_candidate_machine_research_executor as machine_research_executor
 
 ROOT = Path(__file__).resolve().parent
 JOB_LIMIT_ENV = "STEAM_CANDIDATE_RESEARCH_DAILY_JOB_LIMIT"
@@ -218,7 +218,7 @@ def run_daily_executor(
     now: datetime | None = None,
 ) -> dict[str, Any]:
     job_limit, paid_budget = resolve_limits(max_jobs, paid_attempt_budget)
-    run_fn = run_fn or preflight_executor.run_job
+    run_fn = run_fn or machine_research_executor.run_job
     started = now or datetime.now()
     run_date = started.strftime("%Y%m%d")
     if fetch_fn is None:

@@ -41,7 +41,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Run bounded Steam Candidate Preflight V1
+      - name: Run bounded Steam Candidate machine research
         run: >-
           python3 steam_candidate_daily_executor.py
           --max-jobs "$MAX_JOBS"

@@ -156,6 +156,9 @@ def build_steam_candidate_research_completed_callback(
             "top_topics": _top_topics(social),
         },
         "serp_summary": _serp_summary(result, recommendation),
+        "recalc_evidence": recommendation.get("evidence_snapshot")
+        if isinstance(recommendation.get("evidence_snapshot"), dict)
+        else {},
         "research_result_path": _relative_result_path(_text(job.get("job_id"))),
         "recommendation_result_path": _relative_recommendation_path(_text(job.get("job_id"))),
         "completed_at": completed_at,
