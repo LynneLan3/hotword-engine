@@ -14,6 +14,8 @@ input/search_demand_job_live_smoke.json
 input/steam_candidate_research_job.json
 input/today_selected_steam_jobs/
 jobs/daily-steam-candidate-research-*/
+jobs/daily-twitch-raw-observation-*/
+jobs/twitch-historical-raw-ledger/
 jobs/demand-*/
 jobs/search-*/
 jobs/steam-research-*/

@@ -1,0 +1,62 @@
+name: Twitch Raw Observation Daily
+
+on:
+  workflow_dispatch:
+    inputs:
+      requested_limit:
+        description: Maximum Twitch Top Games rows to collect (max 300)
+        required: false
+        default: '300'
+      dry_run:
+        description: Collect and write local artifacts without Sheet ledger write
+        required: false
+        default: 'false'
+  schedule:
+    # 00:45 UTC = 08:45 Asia/Shanghai — before Steam candidate research.
+    - cron: '45 0 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: twitch-raw-observation-daily-v1
+  cancel-in-progress: false
+
+jobs:
+  run-twitch-raw-observation-daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
+      TWITCH_CLIENT_SECRET: ${{ secrets.TWITCH_CLIENT_SECRET }}
+      STEAM_CANDIDATE_RESEARCH_API_URL: ${{ secrets.STEAM_CANDIDATE_RESEARCH_API_URL }}
+      STEAM_CANDIDATE_RESEARCH_CALLBACK_TOKEN: ${{ secrets.STEAM_CANDIDATE_RESEARCH_CALLBACK_TOKEN }}
+      REQUESTED_LIMIT: ${{ github.event_name == 'workflow_dispatch' && inputs.requested_limit || '300' }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run Twitch raw observation daily ledger
+        run: |
+          ARGS=(--requested-limit "$REQUESTED_LIMIT" --run-type SCHEDULED_DAILY --trigger-type SCHEDULED_TRIGGER)
+          if [ "$DRY_RUN" = "true" ]; then
+            ARGS+=(--dry-run)
+          fi
+          python3 twitch_raw_observation_daily_executor.py "${ARGS[@]}"
+
+      - name: Upload Twitch raw observation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: twitch-raw-observation-daily-${{ github.run_id }}
+          path: |
+            jobs/daily-twitch-raw-observation-*/
+            jobs/twitch-historical-raw-ledger/
+          retention-days: 30
+          if-no-files-found: ignore
