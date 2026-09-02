@@ -627,9 +627,9 @@ def collect_provider_for_seed(
     timeout_s = int(job.get("provider_timeout_seconds") or DEFAULT_PROVIDER_TIMEOUT_SECONDS)
     with provider_deadline(timeout_s, provider):
         if provider == "youtube":
-            raw_items, _ = rr.collect_youtube(game=game, topic=seed, game_wide=True, max_opened=15)
+            raw_items, _ = rr.collect_youtube(game=game, topic=seed)
         elif provider == "reddit":
-            raw_items, _ = rr.collect_reddit(game=game, topic=seed, game_wide=True)
+            raw_items, _ = rr.collect_reddit(game=game, topic=seed)
         elif provider == "steam":
             raw_items, _ = rr.collect_steam(game=game, topic=seed, appids=appids)
         else:
