@@ -23,6 +23,8 @@ import steam_candidate_machine_research_executor as machine_research_executor
 ROOT = Path(__file__).resolve().parent
 JOB_LIMIT_ENV = "STEAM_CANDIDATE_RESEARCH_DAILY_JOB_LIMIT"
 PAID_BUDGET_ENV = "STEAM_CANDIDATE_RESEARCH_DAILY_PAID_ATTEMPT_BUDGET"
+TARGET_APP_IDS_ENV = "STEAM_CANDIDATE_TARGET_APP_IDS"
+CONTINUE_ON_CALLBACK_FAIL_ENV = "STEAM_CANDIDATE_CONTINUE_ON_CALLBACK_FAIL"
 DEFAULT_MAX_TOTAL_JOBS = 5
 DEFAULT_PAID_ATTEMPT_BUDGET = 3
 INJECTED_FETCH_URL = "https://steam.example/exec?action=pendingSteamCandidateResearchJobs"
@@ -68,6 +70,30 @@ def resolve_limits(
     return job_limit, paid_budget
 
 
+def _target_app_ids() -> set[str] | None:
+    raw = os.environ.get(TARGET_APP_IDS_ENV, "").strip()
+    if not raw:
+        return None
+    return {part.strip() for part in raw.split(",") if part.strip()}
+
+
+def _continue_on_callback_fail() -> bool:
+    return os.environ.get(CONTINUE_ON_CALLBACK_FAIL_ENV, "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
+def _filter_jobs_by_target(
+    jobs: list[dict[str, Any]],
+    target_app_ids: set[str] | None,
+) -> list[dict[str, Any]]:
+    if not target_app_ids:
+        return jobs
+    return [job for job in jobs if _text(job.get("steam_app_id")) in target_app_ids]
+
+
 def _priority(first_round_type: Any) -> int:
     value = _text(first_round_type).replace(" ", "")
     if value.startswith("🔥") or "趋势" in value:
@@ -107,9 +133,10 @@ def normalize_and_sort_jobs(payload: dict[str, Any]) -> tuple[int, list[dict[str
         seen_app_ids.add(app_id)
         unique.append(job)
 
+    filtered = _filter_jobs_by_target(unique, _target_app_ids())
     # Python's sort is stable, so queue order is preserved within each type.
     return len(jobs), sorted(
-        unique,
+        filtered,
         key=lambda job: _priority((job.get("steam_signals") or {}).get("first_round_type")),
     )
 
@@ -286,6 +313,8 @@ def run_daily_executor(
             summary["results"].append(_result_summary(job, outcome, reused))
 
             if outcome.get("callback_ok") is False:
+                if _continue_on_callback_fail():
+                    continue
                 summary["stopped_early"] = True
                 summary["stop_reason"] = "callback_failed"
                 break

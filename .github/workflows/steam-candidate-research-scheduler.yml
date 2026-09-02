@@ -11,6 +11,14 @@ on:
         description: Maximum fresh SearchApi candidate attempts in this run
         required: false
         default: '3'
+      target_app_ids:
+        description: Optional comma-separated Steam App IDs to process exclusively
+        required: false
+        default: ''
+      continue_on_callback_fail:
+        description: Continue processing remaining jobs after a callback failure
+        required: false
+        default: 'false'
   schedule:
     # 01:15 UTC = 09:15 Asia/Shanghai.
     - cron: '15 1 * * *'
@@ -32,6 +40,8 @@ jobs:
       STEAM_CANDIDATE_RESEARCH_CALLBACK_TOKEN: ${{ secrets.STEAM_CANDIDATE_RESEARCH_CALLBACK_TOKEN }}
       MAX_JOBS: ${{ github.event_name == 'workflow_dispatch' && inputs.max_jobs || '5' }}
       PAID_ATTEMPT_BUDGET: ${{ github.event_name == 'workflow_dispatch' && inputs.paid_attempt_budget || '3' }}
+      STEAM_CANDIDATE_TARGET_APP_IDS: ${{ github.event_name == 'workflow_dispatch' && inputs.target_app_ids || '' }}
+      STEAM_CANDIDATE_CONTINUE_ON_CALLBACK_FAIL: ${{ github.event_name == 'workflow_dispatch' && inputs.continue_on_callback_fail || 'false' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
