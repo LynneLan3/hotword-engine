@@ -12,7 +12,11 @@ RECOMMEND_REJECT = "RECOMMEND_REJECT"
 DISPLAY_BUILD = "BUILD"
 DISPLAY_WATCH = "WATCH"
 DISPLAY_REJECT = "REJECT"
+DISPLAY_SKIP = "SKIP"
 DISPLAY_ALREADY_BUILT = "ALREADY_BUILT"
+
+# Candidate master-table enum for 机器推荐 / 人工决定.
+MASTER_RECOMMENDATIONS = {DISPLAY_BUILD, DISPLAY_WATCH, DISPLAY_SKIP}
 
 
 def _text(value: Any) -> str:
@@ -31,6 +35,7 @@ def _count(value: Any) -> int:
 
 
 def normalize_machine_recommendation_display(value: Any) -> str:
+    """Legacy Today Action / 候选决策 display: BUILD / WATCH / REJECT / ALREADY_BUILT."""
     normalized = _text(value).upper()
     if normalized in {DISPLAY_ALREADY_BUILT, "ALREADY_BUILT"}:
         return DISPLAY_ALREADY_BUILT
@@ -38,9 +43,49 @@ def normalize_machine_recommendation_display(value: Any) -> str:
         return DISPLAY_BUILD
     if normalized in {RECOMMEND_WATCH, DISPLAY_WATCH}:
         return DISPLAY_WATCH
-    if normalized in {RECOMMEND_REJECT, DISPLAY_REJECT, "INSUFFICIENT_EVIDENCE"}:
+    if normalized in {RECOMMEND_REJECT, DISPLAY_REJECT, DISPLAY_SKIP, "INSUFFICIENT_EVIDENCE"}:
         return DISPLAY_REJECT
     return ""
+
+
+def normalize_master_machine_recommendation(value: Any) -> str:
+    """Candidate master-table 机器推荐: BUILD / WATCH / SKIP only."""
+    display = normalize_machine_recommendation_display(value)
+    if display == DISPLAY_BUILD:
+        return DISPLAY_BUILD
+    if display == DISPLAY_WATCH:
+        return DISPLAY_WATCH
+    if display in {DISPLAY_REJECT, DISPLAY_ALREADY_BUILT}:
+        return DISPLAY_SKIP
+    normalized = _text(value).upper()
+    if normalized == DISPLAY_SKIP:
+        return DISPLAY_SKIP
+    return ""
+
+
+def build_master_outcome_machine_fields(
+    *,
+    social: dict[str, Any] | None = None,
+    preflight_result: dict[str, Any] | None = None,
+    machine: dict[str, Any] | None = None,
+    recommendation: Any = None,
+    confidence: Any = None,
+) -> dict[str, Any]:
+    """Machine-writable subset for 候选主表 outcome columns (no human fields)."""
+    resolved = dict(machine or {})
+    if not resolved:
+        resolved = build_machine_fields(
+            social=_as_dict(social),
+            preflight_result=preflight_result,
+        )
+    return {
+        "social_result": _text(resolved.get("social_result") or resolved.get("social_verdict")),
+        "serp_competition": _text(resolved.get("serp_competition")),
+        "machine_recommendation": normalize_master_machine_recommendation(
+            recommendation if recommendation is not None else resolved.get("machine_recommendation")
+        ),
+        "machine_confidence": _text(confidence if confidence is not None else resolved.get("machine_confidence")),
+    }
 
 
 def compute_social_verdict(social: dict[str, Any]) -> tuple[str, str]:
