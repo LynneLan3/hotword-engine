@@ -70,6 +70,12 @@ def _extend_completed_callback(
     payload["machine_recommendation"] = machine_fields.normalize_machine_recommendation_display(
         payload.get("recommendation")
     )
+    # Additive master-table contract: BUILD/WATCH/SKIP + existing confidence.
+    payload["master_outcome_fields"] = machine_fields.build_master_outcome_machine_fields(
+        machine=machine,
+        recommendation=payload.get("recommendation"),
+        confidence=payload.get("confidence"),
+    )
     social_summary = dict(payload.get("social_summary") or {})
     social_summary["verdict"] = machine.get("social_verdict")
     social_summary["one_liner"] = machine.get("social_one_liner")
@@ -305,6 +311,11 @@ def run_job(
     if recommendation.get("existing_site"):
         callback_payload["existing_site"] = recommendation["existing_site"]
         callback_payload["machine_recommendation"] = exclusion.ALREADY_BUILT
+        callback_payload["master_outcome_fields"] = machine_fields.build_master_outcome_machine_fields(
+            machine=machine,
+            recommendation=exclusion.ALREADY_BUILT,
+            confidence=callback_payload.get("confidence"),
+        )
 
 
     if dry_run:
