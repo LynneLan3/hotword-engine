@@ -1,0 +1,63 @@
+name: Player Alias Discovery Scheduler
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_jobs:
+        description: Maximum alias discovery jobs to process
+        required: false
+        default: '5'
+      target_app_ids:
+        description: Optional comma-separated Steam App IDs
+        required: false
+        default: ''
+      continue_on_callback_fail:
+        description: Continue after a callback failure
+        required: false
+        default: 'false'
+  schedule:
+    # 01:45 UTC = 09:45 Asia/Shanghai (after steam candidate research)
+    - cron: '45 1 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: player-alias-discovery-v1
+  cancel-in-progress: false
+
+jobs:
+  run-player-alias-discovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      SEARCHAPI_API_KEY: ${{ secrets.SEARCHAPI_API_KEY }}
+      STEAM_CANDIDATE_RESEARCH_API_URL: ${{ secrets.STEAM_CANDIDATE_RESEARCH_API_URL }}
+      STEAM_CANDIDATE_RESEARCH_CALLBACK_TOKEN: ${{ secrets.STEAM_CANDIDATE_RESEARCH_CALLBACK_TOKEN }}
+      MAX_JOBS: ${{ github.event_name == 'workflow_dispatch' && inputs.max_jobs || '5' }}
+      PLAYER_ALIAS_TARGET_APP_IDS: ${{ github.event_name == 'workflow_dispatch' && inputs.target_app_ids || '' }}
+      PLAYER_ALIAS_CONTINUE_ON_CALLBACK_FAIL: ${{ github.event_name == 'workflow_dispatch' && inputs.continue_on_callback_fail || 'false' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run player alias discovery batch
+        env:
+          PLAYER_ALIAS_DISCOVERY_MAX_JOBS: ${{ github.event_name == 'workflow_dispatch' && inputs.max_jobs || '5' }}
+        run: python3 player_alias_discovery_executor.py --max-jobs "$PLAYER_ALIAS_DISCOVERY_MAX_JOBS"
+
+      - name: Upload alias discovery artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: player-alias-discovery-${{ github.run_id }}
+          path: |
+            jobs/
+            output/player_alias_discovery_batch.json
+          retention-days: 30
+          if-no-files-found: ignore

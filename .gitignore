@@ -14,12 +14,7 @@ input/search_demand_job_live_smoke.json
 input/steam_candidate_research_job.json
 input/today_selected_steam_jobs/
 jobs/daily-steam-candidate-research-*/
-<<<<<<< HEAD
-=======
 jobs/daily-today-action-*/
-jobs/daily-twitch-raw-observation-*/
-jobs/twitch-historical-raw-ledger/
->>>>>>> 18945d1 (Add existing-site exclusion and build eligibility to daily candidate selection.)
 jobs/demand-*/
 jobs/search-*/
 jobs/steam-research-*/
