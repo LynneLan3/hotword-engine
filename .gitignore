@@ -10,16 +10,15 @@ input/demand_discovery_job.json
 input/pending_demand_discovery_jobs.json
 input/pending_search_demand_jobs.json
 input/pending_steam_candidate_research_jobs.json
+input/pending_player_alias_discovery_jobs.json
+input/player_alias_discovery_job.json
 input/search_demand_job_live_smoke.json
 input/steam_candidate_research_job.json
 input/today_selected_steam_jobs/
 jobs/daily-steam-candidate-research-*/
-<<<<<<< HEAD
-=======
 jobs/daily-today-action-*/
-jobs/daily-twitch-raw-observation-*/
-jobs/twitch-historical-raw-ledger/
->>>>>>> 18945d1 (Add existing-site exclusion and build eligibility to daily candidate selection.)
+jobs/daily-player-alias-discovery-*/
+jobs/alias-discovery-*/
 jobs/demand-*/
 jobs/search-*/
 jobs/steam-research-*/
