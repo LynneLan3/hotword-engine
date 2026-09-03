@@ -1,0 +1,158 @@
+{
+  "run_date": "2026-09-03",
+  "candidates": [
+    {
+      "job_id": "steam-research-3848900-20260903",
+      "steam_app_id": "3848900",
+      "game_name": "Sucker for Love: Crush Landing",
+      "steam_signals": {
+        "first_round_type": "🔥 趋势候选",
+        "followers_gain_7d": 1200,
+        "release_date": "2026-08-28",
+        "days_to_release": -6
+      },
+      "candidate_state": {
+        "decision": "BUILD",
+        "preflight_verdict": "MANUAL_REVIEW"
+      },
+      "manual_signals": {
+        "trends_result": "强",
+        "keyword_opportunity": "有"
+      },
+      "social": {
+        "status": "AVAILABLE",
+        "actionable_cluster_count": 2,
+        "evidence_count": 10
+      },
+      "serp": {
+        "status": "AVAILABLE",
+        "competition_summary": {
+          "signals": ["LOW_GUIDE_DENSITY"]
+        }
+      },
+      "research_result": {
+        "job_id": "steam-research-3848900-20260903",
+        "steam_app_id": "3848900",
+        "game_name": "Sucker for Love: Crush Landing",
+        "steam_signals": {
+          "first_round_type": "🔥 趋势候选",
+          "followers_gain_7d": 1200
+        },
+        "manual_signals": {
+          "trends_result": "强",
+          "keyword_opportunity": "有"
+        },
+        "social": {
+          "status": "AVAILABLE",
+          "actionable_cluster_count": 2,
+          "evidence_count": 10
+        },
+        "serp": {
+          "status": "AVAILABLE",
+          "competition_summary": {
+            "signals": ["LOW_GUIDE_DENSITY"]
+          }
+        }
+      }
+    },
+    {
+      "job_id": "steam-research-4513480-20260903",
+      "steam_app_id": "4513480",
+      "game_name": "Scarlet Skips",
+      "steam_signals": {
+        "first_round_type": "🌱 Early候选",
+        "followers_gain_7d": 900,
+        "release_date": "2026-09-03",
+        "days_to_release": 0
+      },
+      "candidate_state": {
+        "decision": "BUILD",
+        "preflight_verdict": "MANUAL_REVIEW"
+      },
+      "manual_signals": {
+        "trends_result": "中",
+        "keyword_opportunity": "有"
+      },
+      "research_result": {
+        "job_id": "steam-research-4513480-20260903",
+        "steam_app_id": "4513480",
+        "game_name": "Scarlet Skips",
+        "steam_signals": {
+          "first_round_type": "🌱 Early候选",
+          "followers_gain_7d": 900
+        },
+        "manual_signals": {
+          "trends_result": "中",
+          "keyword_opportunity": "有"
+        },
+        "social": {
+          "status": "AVAILABLE",
+          "actionable_cluster_count": 1,
+          "evidence_count": 5
+        },
+        "serp": {
+          "status": "AVAILABLE",
+          "competition_summary": {
+            "signals": ["LOW_GUIDE_DENSITY", "HIGH_VIDEO_UGC_PRESENCE"]
+          }
+        }
+      }
+    },
+    {
+      "job_id": "steam-research-4339280-20260903",
+      "steam_app_id": "4339280",
+      "game_name": "ShipShaper: Falconeer Chronicles",
+      "steam_signals": {
+        "first_round_type": "🟡 Trend Watch",
+        "followers_gain_7d": 651,
+        "release_date": "2026-09-02",
+        "days_to_release": -1
+      },
+      "candidate_state": {
+        "decision": "",
+        "preflight_verdict": "PENDING"
+      },
+      "manual_signals": {
+        "trends_result": "",
+        "keyword_opportunity": ""
+      },
+      "research_cycle_date": "2026-09-03"
+    },
+    {
+      "job_id": "steam-research-4656000-name-only",
+      "steam_app_id": "",
+      "game_name": "BOMBANANA",
+      "candidate_state": {"decision": "BUILD"},
+      "steam_signals": {"first_round_type": "🔥 趋势候选", "followers_gain_7d": 800}
+    },
+    {
+      "job_id": "steam-research-99991702-fixture-guard",
+      "steam_app_id": "1111111",
+      "game_name": "Real Game Near Fixture",
+      "candidate_state": {"decision": ""},
+      "steam_signals": {
+        "first_round_type": "🌱 Early候选",
+        "followers_gain_7d": 700,
+        "release_date": "2026-09-04",
+        "days_to_release": 1
+      },
+      "manual_signals": {"trends_result": "强", "keyword_opportunity": "有"},
+      "research_result": {
+        "job_id": "steam-research-99991702-fixture-guard",
+        "steam_app_id": "1111111",
+        "game_name": "Real Game Near Fixture",
+        "steam_signals": {"first_round_type": "🌱 Early候选", "followers_gain_7d": 700},
+        "manual_signals": {"trends_result": "强", "keyword_opportunity": "有"},
+        "social": {
+          "status": "AVAILABLE",
+          "actionable_cluster_count": 2,
+          "evidence_count": 9
+        },
+        "serp": {
+          "status": "AVAILABLE",
+          "competition_summary": {"signals": ["LOW_GUIDE_DENSITY"]}
+        }
+      }
+    }
+  ]
+}

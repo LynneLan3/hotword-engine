@@ -16,9 +16,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 import fetch_pending_steam_candidate_research_jobs as fetcher
+import existing_site_exclusion as exclusion
+import existing_site_live_sources as live_sources
 import steam_candidate_research_job_runner as runner
 import steam_candidate_preflight as preflight
 import steam_candidate_machine_research_executor as machine_research_executor
+import today_action_pipeline as today_actions
 
 ROOT = Path(__file__).resolve().parent
 JOB_LIMIT_ENV = "STEAM_CANDIDATE_RESEARCH_DAILY_JOB_LIMIT"
@@ -28,6 +31,8 @@ CONTINUE_ON_CALLBACK_FAIL_ENV = "STEAM_CANDIDATE_CONTINUE_ON_CALLBACK_FAIL"
 DEFAULT_MAX_TOTAL_JOBS = 5
 DEFAULT_PAID_ATTEMPT_BUDGET = 3
 INJECTED_FETCH_URL = "https://steam.example/exec?action=pendingSteamCandidateResearchJobs"
+DEFAULT_REGISTRY_SITES = live_sources.DEFAULT_REGISTRY_SITES
+DEFAULT_REGISTRY_GAMES = live_sources.DEFAULT_REGISTRY_GAMES
 
 RunFn = Callable[..., dict[str, Any]]
 
@@ -107,12 +112,17 @@ def _priority(first_round_type: Any) -> int:
     return 4
 
 
-def normalize_and_sort_jobs(payload: dict[str, Any]) -> tuple[int, list[dict[str, Any]]]:
+def normalize_and_sort_jobs(
+    payload: dict[str, Any],
+    *,
+    existing_site_index: exclusion.ExistingSiteIndex | None = None,
+) -> tuple[int, list[dict[str, Any]], list[dict[str, Any]]]:
     jobs = payload.get("jobs")
     if not isinstance(jobs, list):
         raise ValueError("Steam candidate research API response missing a jobs array")
 
     unique: list[dict[str, Any]] = []
+    existing_excluded: list[dict[str, Any]] = []
     seen_app_ids: set[str] = set()
     for raw_job in jobs:
         job = fetcher.to_steam_candidate_research_job(raw_job)
@@ -120,6 +130,22 @@ def normalize_and_sort_jobs(payload: dict[str, Any]) -> tuple[int, list[dict[str
         status = _text(state.get("status")).upper()
         if state.get("one_a_excluded") or status in {"REJECT", "BUILD"}:
             continue
+        if existing_site_index is not None:
+            evaluation = exclusion.evaluate_existing_site(job, existing_site_index)
+            if evaluation.get("existingSite"):
+                existing_excluded.append(
+                    {
+                        "steam_app_id": _text(job.get("steam_app_id")),
+                        "game_name": _text(job.get("game_name")),
+                        "job_id": _text(job.get("job_id")),
+                        "existingSiteSource": evaluation.get("existingSiteSource"),
+                        "existingSiteID": evaluation.get("existingSiteID"),
+                        "existingSiteStatus": evaluation.get("existingSiteStatus"),
+                        "stateSyncGap": evaluation.get("stateSyncGap"),
+                        "reconciled_decision": evaluation.get("reconciled_decision"),
+                    }
+                )
+                continue
         if status == "WATCH" and state.get("next_review_date"):
             try:
                 review_date = str(state["next_review_date"])[:10]
@@ -135,9 +161,13 @@ def normalize_and_sort_jobs(payload: dict[str, Any]) -> tuple[int, list[dict[str
 
     filtered = _filter_jobs_by_target(unique, _target_app_ids())
     # Python's sort is stable, so queue order is preserved within each type.
-    return len(jobs), sorted(
-        filtered,
-        key=lambda job: _priority((job.get("steam_signals") or {}).get("first_round_type")),
+    return (
+        len(jobs),
+        sorted(
+            filtered,
+            key=lambda job: _priority((job.get("steam_signals") or {}).get("first_round_type")),
+        ),
+        existing_excluded,
     )
 
 
@@ -234,6 +264,40 @@ def _write_summary(path: Path, summary: dict[str, Any]) -> None:
     path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def _default_existing_site_index(
+    *,
+    allow_sibling_registry: bool = True,
+) -> tuple[exclusion.ExistingSiteIndex | None, dict[str, Any]]:
+    """Production loads live three-source authorities; never test fixtures."""
+    if not allow_sibling_registry and not any(
+        os.environ.get(name)
+        for name in (
+            "HOTWORD_REGISTRY_SITES",
+            "HOTWORD_GSC_SITE_SNAPSHOT",
+            "HOTWORD_STEAM_SITE_POOL_SNAPSHOT",
+            "HOTWORD_EXISTING_SITE_EXCLUSION",
+        )
+    ):
+        return None, {"mode": "disabled_offline"}
+
+    forced_off = os.environ.get("HOTWORD_EXISTING_SITE_EXCLUSION", "").strip().lower() in {
+        "0",
+        "false",
+        "no",
+        "off",
+    }
+    if forced_off:
+        return None, {"mode": "disabled_by_env"}
+
+    try:
+        index, meta = live_sources.load_production_existing_site_index(
+            allow_missing_registry=not allow_sibling_registry,
+        )
+    except (OSError, ValueError, FileNotFoundError) as exc:
+        return None, {"mode": "error", "error": str(exc)}
+    return index, meta
+
+
 def run_daily_executor(
     *,
     root: Path = ROOT,
@@ -243,6 +307,7 @@ def run_daily_executor(
     paid_attempt_budget: int | None = None,
     dry_run: bool = False,
     now: datetime | None = None,
+    existing_site_index: exclusion.ExistingSiteIndex | None = None,
 ) -> dict[str, Any]:
     job_limit, paid_budget = resolve_limits(max_jobs, paid_attempt_budget)
     run_fn = run_fn or machine_research_executor.run_job
@@ -255,7 +320,20 @@ def run_daily_executor(
             url=INJECTED_FETCH_URL,
             fetch_fn=fetch_fn,
         )
-    pending_fetched, jobs = normalize_and_sort_jobs(payload)
+    # Injected fetch_fn implies offline/unit mode: do not auto-read live
+    # authorities unless the caller passed an index or set env knobs.
+    source_meta: dict[str, Any]
+    if existing_site_index is not None:
+        site_index = existing_site_index
+        source_meta = {"mode": "injected_index"}
+    else:
+        site_index, source_meta = _default_existing_site_index(
+            allow_sibling_registry=fetch_fn is None
+        )
+    pending_fetched, jobs, existing_excluded = normalize_and_sort_jobs(
+        payload,
+        existing_site_index=site_index,
+    )
     selected, fresh_attempts, reuses = _selection(
         jobs,
         max_jobs=job_limit,
@@ -263,10 +341,25 @@ def run_daily_executor(
         root=root,
     )
 
+    # Same exclusion result feeds the today-action queue artifact used for
+    # production writeback decisions. STATE_SYNC_GAP is recorded only.
+    raw_for_actions = list(payload.get("jobs") or [])
+    today_action = today_actions.run_today_action_pipeline(
+        [job for job in raw_for_actions if isinstance(job, dict)],
+        existing_site_index=site_index or exclusion.ExistingSiteIndex(),
+        today=(now or started).date(),
+    )
+
     summary: dict[str, Any] = {
         "run_date": started.strftime("%Y-%m-%d"),
         "pending_fetched": pending_fetched,
         "unique_candidates": len(jobs),
+        "existing_sites_excluded": existing_excluded,
+        "existing_sites_excluded_count": len(existing_excluded),
+        "existing_site_sources": source_meta,
+        "today_action_summary": today_action.get("summary"),
+        "today_action_no_build_today": today_action.get("no_build_today"),
+        "today_action_already_built": today_action.get("already_built"),
         "job_limit": job_limit,
         "paid_attempt_budget": paid_budget,
         "processed": 0,
@@ -279,6 +372,12 @@ def run_daily_executor(
         "started_at": started.isoformat(timespec="seconds"),
         "finished_at": None,
     }
+
+    today_action_path = (
+        root / "jobs" / f"daily-steam-candidate-research-{run_date}" / "today_action_queue.json"
+    )
+    _write_summary(today_action_path, today_action)
+    summary["today_action_queue_path"] = str(today_action_path)
 
     if dry_run:
         summary["planned_candidates"] = [
@@ -304,7 +403,10 @@ def run_daily_executor(
             reused = _completed_artifact(root, job)
             job_path = temp_root / f"{_text(job.get('job_id'))}.json"
             job_path.write_text(json.dumps(job, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-            outcome = run_fn(job_path, root=root)
+            try:
+                outcome = run_fn(job_path, root=root, existing_site_index=site_index)
+            except TypeError:
+                outcome = run_fn(job_path, root=root)
             if not isinstance(outcome, dict):
                 outcome = {"execution_status": "FAILED", "callback_ok": False}
             summary["processed"] += 1

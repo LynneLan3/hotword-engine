@@ -1,0 +1,41 @@
+{
+  "description": "2026-09-03 regression existing-site sources for daily BUILD exclusion",
+  "gscSiteRows": [
+    {
+      "site_id": "sucker-for-love-crush-landing",
+      "站点名称": "Sucker for Love: Crush Landing",
+      "Enabled": true,
+      "property_url": "https://crushlanding.wiki/",
+      "steam_app_id": "3848900"
+    },
+    {
+      "site_id": "bombanana",
+      "站点名称": "BOMBANANA",
+      "Enabled": true,
+      "property_url": "https://bombanana-guide.vercel.app",
+      "steam_app_id": "4656000"
+    },
+    {
+      "site_id": "artificial-emberfall-p2-fixture",
+      "站点名称": "Artificial Emberfall Fixture",
+      "Enabled": true,
+      "property_url": "https://artificial-emberfall-p2-fixture.vercel.app/",
+      "steam_app_id": "99991702"
+    }
+  ],
+  "steamSitePoolRows": [
+    {
+      "Site ID": "bombanana",
+      "游戏名称": "BOMBANANA!",
+      "Steam App ID": "4656000",
+      "当前状态": "LIVE",
+      "Build状态": "COMPLETED"
+    }
+  ],
+  "notes": [
+    "Sucker: GSC enabled + Registry PRODUCTION; Steam 站点项目池 intentionally missing",
+    "Scarlet: Registry PREVIEW_READY only",
+    "ShipShaper: absent from all three sources",
+    "Fixture/artificial GSC row must not block real candidates"
+  ]
+}
