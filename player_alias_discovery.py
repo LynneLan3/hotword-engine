@@ -346,6 +346,11 @@ def discover_from_snippets(
                 seen_urls.add(url)
                 source_urls.append(url)
 
+    ok_sources = {
+        str(item.get("source") or "")
+        for item in source_diags
+        if isinstance(item, dict) and item.get("ok") and str(item.get("source") or "").strip()
+    }
     return {
         "alias": alias,
         "status": status,
@@ -354,6 +359,6 @@ def discover_from_snippets(
         "ranked": ranked[:5],
         "source_diags": source_diags,
         "source_urls": source_urls[:20],
-        "source_count": len(source_urls[:20]),
+        "source_count": len(ok_sources),
         "confidence": confidence_for(status, alias),
     }
