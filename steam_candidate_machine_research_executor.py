@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 from typing import Any, Callable
 
+import existing_site_exclusion as exclusion
 import steam_candidate_machine_fields as machine_fields
 import steam_candidate_preflight as preflight
 import steam_candidate_preflight_executor as preflight_executor
@@ -16,6 +17,8 @@ import steam_candidate_research_job_runner as m7c
 import steam_candidate_research_runner as m7a
 
 ROOT = Path(__file__).resolve().parent
+DEFAULT_REGISTRY_SITES = ROOT.parent / "hotword-control-center" / "registry" / "sites.yaml"
+DEFAULT_REGISTRY_GAMES = ROOT.parent / "hotword-control-center" / "registry" / "games.yaml"
 
 
 def _text(value: Any) -> str:
@@ -74,6 +77,69 @@ def _extend_completed_callback(
     return payload
 
 
+def _as_machine_fields(
+    result: dict[str, Any],
+    *,
+    social: dict[str, Any],
+    preflight_result: dict[str, Any] | None,
+) -> dict[str, Any]:
+    existing = result.get("machine_fields")
+    if isinstance(existing, dict) and existing:
+        return existing
+    return machine_fields.build_machine_fields(social=social, preflight_result=preflight_result)
+
+
+def _optional_existing_site_index() -> exclusion.ExistingSiteIndex | None:
+    """Load live production index when explicitly enabled for job execution.
+
+    Daily executor always passes its live index into ``run_job``. Standalone
+    job runs opt in via ``HOTWORD_EXISTING_SITE_EXCLUSION=1`` (or snapshot envs).
+    """
+    enabled = os.environ.get("HOTWORD_EXISTING_SITE_EXCLUSION", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    gsc = os.environ.get("HOTWORD_GSC_SITE_SNAPSHOT")
+    pool = os.environ.get("HOTWORD_STEAM_SITE_POOL_SNAPSHOT")
+    sites_env = os.environ.get("HOTWORD_REGISTRY_SITES")
+    if not (enabled or gsc or pool or sites_env):
+        return None
+    import existing_site_live_sources as live_sources
+
+    index, _meta = live_sources.load_production_existing_site_index(
+        allow_missing_registry=False,
+    )
+    return index
+
+
+
+def _reconcile_recommendation_with_existing_site(
+    job: dict[str, Any],
+    recommendation: dict[str, Any],
+    *,
+    existing_site_index: exclusion.ExistingSiteIndex | None = None,
+) -> dict[str, Any]:
+    index = existing_site_index if existing_site_index is not None else _optional_existing_site_index()
+    if index is None:
+        return recommendation
+    evaluation = exclusion.evaluate_existing_site(job, index)
+    if not evaluation.get("existingSite"):
+        return recommendation
+    reconciled = dict(recommendation)
+    reconciled["recommendation"] = exclusion.ALREADY_BUILT
+    reconciled["existing_site"] = evaluation
+    reconciled["eligibleForNewSite"] = False
+    reconciled["reasons"] = list(reconciled.get("reasons") or []) + ["EXISTING_SITE"]
+    reconciled["blocking_reasons"] = list(
+        dict.fromkeys(list(reconciled.get("blocking_reasons") or []) + ["EXISTING_SITE"])
+    )
+    if evaluation.get("stateSyncGap"):
+        reconciled["state_sync_codes"] = [exclusion.STATE_SYNC_GAP]
+    reconciled["next_action"] = evaluation.get("next_action")
+    return reconciled
+
+
 def run_job(
     job_path: Path,
     *,
@@ -83,12 +149,38 @@ def run_job(
     research_fn: Callable[..., dict[str, Any]] | None = None,
     post_fn: Callable[[str, dict[str, Any]], Any] | None = None,
     dry_run: bool = False,
+    existing_site_index: exclusion.ExistingSiteIndex | None = None,
 ) -> dict[str, Any]:
     """Preflight first; full M7A+M7B callback only for MANUAL_REVIEW."""
     job = _load(job_path)
     job_id = _text(job.get("job_id"))
     if not job_id:
         raise ValueError("machine research job missing job_id")
+
+    # Existing-site exclusion happens before research spend when an index is available.
+    early_index = (
+        existing_site_index
+        if existing_site_index is not None
+        else _optional_existing_site_index()
+    )
+    if early_index is not None:
+        evaluation = exclusion.evaluate_existing_site(job, early_index)
+        if evaluation.get("existingSite"):
+            return {
+                "ok": True,
+                "execution_status": "SKIPPED_EXISTING_SITE",
+                "callback_ok": None,
+                "callback_payload": {
+                    "recommendation": exclusion.ALREADY_BUILT,
+                    "machine_recommendation": exclusion.ALREADY_BUILT,
+                    "existing_site": evaluation,
+                },
+                "preflight_verdict": None,
+                "existing_site": evaluation,
+                "skipped_existing_site": True,
+                "dry_run": dry_run,
+                "sent": False,
+            }
 
     job_dir = root / "jobs" / job_id
     preflight_path = job_dir / "steam_candidate_preflight.json"
@@ -191,6 +283,13 @@ def run_job(
         recommendation = m7b.build_steam_candidate_recommendation(result)
         recommendation["generated_at"] = m7a.now_iso()
         _write(recommendation_path, recommendation)
+    recommendation = _reconcile_recommendation_with_existing_site(
+        job,
+        recommendation,
+        existing_site_index=early_index,
+    )
+    if recommendation.get("recommendation") == exclusion.ALREADY_BUILT:
+        _write(recommendation_path, recommendation)
 
     callback_payload = m7c.build_steam_candidate_research_completed_callback(
         job=job,
@@ -203,6 +302,10 @@ def run_job(
         preflight_result=preflight_result,
         machine=machine,
     )
+    if recommendation.get("existing_site"):
+        callback_payload["existing_site"] = recommendation["existing_site"]
+        callback_payload["machine_recommendation"] = exclusion.ALREADY_BUILT
+
 
     if dry_run:
         return {
@@ -234,13 +337,5 @@ def run_job(
     }
 
 
-def _as_machine_fields(
-    result: dict[str, Any],
-    *,
-    social: dict[str, Any],
-    preflight_result: dict[str, Any],
-) -> dict[str, Any]:
-    existing = result.get("machine_fields")
-    if isinstance(existing, dict) and existing.get("social_result"):
-        return existing
-    return machine_fields.build_machine_fields(social=social, preflight_result=preflight_result)
+if __name__ == "__main__":
+    raise SystemExit("Use steam_candidate_daily_executor or import run_job()")

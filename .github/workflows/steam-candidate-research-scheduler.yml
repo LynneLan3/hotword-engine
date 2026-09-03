@@ -46,12 +46,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Checkout Control Center registry (live Existing Site authority)
+        uses: actions/checkout@v4
+        with:
+          repository: LynneLan3/hotword-control-center
+          path: .deps/hotword-control-center
+          sparse-checkout: |
+            registry
+          sparse-checkout-cone-mode: true
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
+      - name: Install PyYAML for registry load
+        run: python3 -m pip install --quiet pyyaml
+
       - name: Run bounded Steam Candidate machine research
+        env:
+          HOTWORD_REGISTRY_SITES: ${{ github.workspace }}/.deps/hotword-control-center/registry/sites.yaml
+          HOTWORD_REGISTRY_GAMES: ${{ github.workspace }}/.deps/hotword-control-center/registry/games.yaml
+          HOTWORD_EXISTING_SITE_EXCLUSION: '1'
         run: >-
           python3 steam_candidate_daily_executor.py
           --max-jobs "$MAX_JOBS"

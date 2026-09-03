@@ -123,10 +123,11 @@ class SteamCandidateDailyExecutorTests(unittest.TestCase):
     def test_duplicate_app_id_keeps_first_queue_entry(self) -> None:
         first = _job("3000", job_id="first")
         second = _job("3000", job_id="second")
-        fetched, jobs = executor.normalize_and_sort_jobs({"jobs": [first, second]})
+        fetched, jobs, excluded = executor.normalize_and_sort_jobs({"jobs": [first, second]})
         self.assertEqual(fetched, 2)
         self.assertEqual(len(jobs), 1)
         self.assertEqual(jobs[0]["job_id"], "first")
+        self.assertEqual(excluded, [])
 
     def test_priority_and_stable_queue_order(self) -> None:
         jobs = [
@@ -137,8 +138,9 @@ class SteamCandidateDailyExecutorTests(unittest.TestCase):
             _job("4004", first_round_type="🏢大盘对照"),
             _job("4005", first_round_type="🔥趋势"),
         ]
-        _fetched, sorted_jobs = executor.normalize_and_sort_jobs({"jobs": jobs})
+        _fetched, sorted_jobs, excluded = executor.normalize_and_sort_jobs({"jobs": jobs})
         self.assertEqual([job["steam_app_id"] for job in sorted_jobs], ["4002", "4005", "4003", "4004", "4001", "4000"])
+        self.assertEqual(excluded, [])
 
     def test_callback_failure_stops_batch(self) -> None:
         jobs = [_job("5000"), _job("5001")]
