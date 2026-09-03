@@ -41,6 +41,7 @@ class SteamCandidateMachineFieldsTests(unittest.TestCase):
         self.assertEqual(fields.normalize_machine_recommendation_display("RECOMMEND_BUILD"), "BUILD")
         self.assertEqual(fields.normalize_machine_recommendation_display("RECOMMEND_WATCH"), "WATCH")
         self.assertEqual(fields.normalize_machine_recommendation_display("RECOMMEND_REJECT"), "REJECT")
+        self.assertEqual(fields.normalize_machine_recommendation_display("ALREADY_BUILT"), "ALREADY_BUILT")
 
 
 if __name__ == "__main__":

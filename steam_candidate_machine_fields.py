@@ -12,6 +12,7 @@ RECOMMEND_REJECT = "RECOMMEND_REJECT"
 DISPLAY_BUILD = "BUILD"
 DISPLAY_WATCH = "WATCH"
 DISPLAY_REJECT = "REJECT"
+DISPLAY_ALREADY_BUILT = "ALREADY_BUILT"
 
 
 def _text(value: Any) -> str:
@@ -31,6 +32,8 @@ def _count(value: Any) -> int:
 
 def normalize_machine_recommendation_display(value: Any) -> str:
     normalized = _text(value).upper()
+    if normalized in {DISPLAY_ALREADY_BUILT, "ALREADY_BUILT"}:
+        return DISPLAY_ALREADY_BUILT
     if normalized in {RECOMMEND_BUILD, DISPLAY_BUILD}:
         return DISPLAY_BUILD
     if normalized in {RECOMMEND_WATCH, DISPLAY_WATCH}:
