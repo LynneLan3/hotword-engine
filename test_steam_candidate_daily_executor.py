@@ -129,6 +129,18 @@ class SteamCandidateDailyExecutorTests(unittest.TestCase):
         self.assertEqual(jobs[0]["job_id"], "first")
         self.assertEqual(excluded, [])
 
+    def test_target_job_ids_filter_before_review_date(self) -> None:
+        target = _job("3050", job_id="target-job")
+        target["candidate_state"] = {"status": "WATCH", "next_review_date": "2999-01-01"}
+        other = _job("3051", job_id="other-job")
+        other["candidate_state"] = {"status": "WATCH", "next_review_date": "2020-01-01"}
+        fetched, jobs, excluded = executor.normalize_and_sort_jobs(
+            {"jobs": [target, other]}, target_job_ids={"target-job"}
+        )
+        self.assertEqual(fetched, 2)
+        self.assertEqual([job["job_id"] for job in jobs], ["target-job"])
+        self.assertEqual(excluded, [])
+
     def test_priority_and_stable_queue_order(self) -> None:
         jobs = [
             _job("4000", first_round_type="unknown"),

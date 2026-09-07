@@ -15,6 +15,10 @@ on:
         description: Optional comma-separated Steam App IDs to process exclusively
         required: false
         default: ''
+      target_job_ids:
+        description: Optional comma-separated Research Job IDs to process exclusively
+        required: false
+        default: ''
       continue_on_callback_fail:
         description: Continue processing remaining jobs after a callback failure
         required: false
@@ -41,6 +45,7 @@ jobs:
       MAX_JOBS: ${{ github.event_name == 'workflow_dispatch' && inputs.max_jobs || '5' }}
       PAID_ATTEMPT_BUDGET: ${{ github.event_name == 'workflow_dispatch' && inputs.paid_attempt_budget || '3' }}
       STEAM_CANDIDATE_TARGET_APP_IDS: ${{ github.event_name == 'workflow_dispatch' && inputs.target_app_ids || '' }}
+      STEAM_CANDIDATE_TARGET_JOB_IDS: ${{ github.event_name == 'workflow_dispatch' && inputs.target_job_ids || '' }}
       STEAM_CANDIDATE_CONTINUE_ON_CALLBACK_FAIL: ${{ github.event_name == 'workflow_dispatch' && inputs.continue_on_callback_fail || 'false' }}
     steps:
       - name: Checkout
@@ -51,6 +56,8 @@ jobs:
         with:
           repository: LynneLan3/hotword-control-center
           path: .deps/hotword-control-center
+          token: ${{ secrets.HOTWORD_CONTROL_CENTER_READ_TOKEN }}
+          persist-credentials: false
           sparse-checkout: |
             registry
           sparse-checkout-cone-mode: true
@@ -72,6 +79,7 @@ jobs:
           python3 steam_candidate_daily_executor.py
           --max-jobs "$MAX_JOBS"
           --paid-attempt-budget "$PAID_ATTEMPT_BUDGET"
+          --target-job-ids "$STEAM_CANDIDATE_TARGET_JOB_IDS"
 
       - name: Upload Steam Candidate artifacts
         if: always()

@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parent
 JOB_LIMIT_ENV = "STEAM_CANDIDATE_RESEARCH_DAILY_JOB_LIMIT"
 PAID_BUDGET_ENV = "STEAM_CANDIDATE_RESEARCH_DAILY_PAID_ATTEMPT_BUDGET"
 TARGET_APP_IDS_ENV = "STEAM_CANDIDATE_TARGET_APP_IDS"
+TARGET_JOB_IDS_ENV = "STEAM_CANDIDATE_TARGET_JOB_IDS"
 CONTINUE_ON_CALLBACK_FAIL_ENV = "STEAM_CANDIDATE_CONTINUE_ON_CALLBACK_FAIL"
 DEFAULT_MAX_TOTAL_JOBS = 5
 DEFAULT_PAID_ATTEMPT_BUDGET = 3
@@ -82,6 +83,14 @@ def _target_app_ids() -> set[str] | None:
     return {part.strip() for part in raw.split(",") if part.strip()}
 
 
+def _target_job_ids(value: str | None = None) -> set[str] | None:
+    raw = os.environ.get(TARGET_JOB_IDS_ENV, "") if value is None else value
+    raw = raw.strip()
+    if not raw:
+        return None
+    return {part.strip() for part in raw.split(",") if part.strip()}
+
+
 def _continue_on_callback_fail() -> bool:
     return os.environ.get(CONTINUE_ON_CALLBACK_FAIL_ENV, "").strip().lower() in {
         "1",
@@ -116,6 +125,7 @@ def normalize_and_sort_jobs(
     payload: dict[str, Any],
     *,
     existing_site_index: exclusion.ExistingSiteIndex | None = None,
+    target_job_ids: set[str] | None = None,
 ) -> tuple[int, list[dict[str, Any]], list[dict[str, Any]]]:
     jobs = payload.get("jobs")
     if not isinstance(jobs, list):
@@ -126,6 +136,8 @@ def normalize_and_sort_jobs(
     seen_app_ids: set[str] = set()
     for raw_job in jobs:
         job = fetcher.to_steam_candidate_research_job(raw_job)
+        if target_job_ids is not None and _text(job.get("job_id")) not in target_job_ids:
+            continue
         state = preflight._decision_state(job)
         status = _text(state.get("status")).upper()
         if state.get("one_a_excluded") or status in {"REJECT", "BUILD"}:
@@ -149,7 +161,7 @@ def normalize_and_sort_jobs(
         if status == "WATCH" and state.get("next_review_date"):
             try:
                 review_date = str(state["next_review_date"])[:10]
-                if datetime.now().strftime("%Y-%m-%d") < review_date:
+                if target_job_ids is None and datetime.now().strftime("%Y-%m-%d") < review_date:
                     continue
             except (TypeError, ValueError):
                 pass
@@ -308,6 +320,7 @@ def run_daily_executor(
     dry_run: bool = False,
     now: datetime | None = None,
     existing_site_index: exclusion.ExistingSiteIndex | None = None,
+    target_job_ids: str | None = None,
 ) -> dict[str, Any]:
     job_limit, paid_budget = resolve_limits(max_jobs, paid_attempt_budget)
     run_fn = run_fn or machine_research_executor.run_job
@@ -333,6 +346,7 @@ def run_daily_executor(
     pending_fetched, jobs, existing_excluded = normalize_and_sort_jobs(
         payload,
         existing_site_index=site_index,
+        target_job_ids=_target_job_ids(target_job_ids),
     )
     selected, fresh_attempts, reuses = _selection(
         jobs,
@@ -362,6 +376,7 @@ def run_daily_executor(
         "today_action_already_built": today_action.get("already_built"),
         "job_limit": job_limit,
         "paid_attempt_budget": paid_budget,
+        "target_job_ids": sorted(_target_job_ids(target_job_ids) or []),
         "processed": 0,
         "fresh_paid_attempts": 0,
         "artifact_reuses": 0,
@@ -439,11 +454,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--max-jobs", type=int, default=None)
     parser.add_argument("--paid-attempt-budget", type=int, default=None)
+    parser.add_argument("--target-job-ids", default=None)
     args = parser.parse_args(argv)
     try:
         summary = run_daily_executor(
             max_jobs=args.max_jobs,
             paid_attempt_budget=args.paid_attempt_budget,
+            target_job_ids=args.target_job_ids,
             dry_run=args.dry_run,
         )
     except (SystemExit, ValueError) as exc:
