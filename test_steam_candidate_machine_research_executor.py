@@ -95,9 +95,9 @@ class SteamCandidateMachineResearchExecutorTests(unittest.TestCase):
 
         self.assertTrue(outcome["ok"])
         self.assertEqual(outcome["preflight_verdict"], preflight.MANUAL_REVIEW)
-        self.assertIn("recommendation", sent[0])
-        self.assertEqual(sent[0]["machine_fields"]["keyword_opportunity"], "有")
-        self.assertEqual(sent[0]["machine_recommendation"], "BUILD")
+        completed = next(body for body in sent if "recommendation" in body)
+        self.assertEqual(completed["machine_fields"]["keyword_opportunity"], "有")
+        self.assertEqual(completed["recommendation"], "RECOMMEND_BUILD")
 
     def test_non_manual_review_delegates_to_preflight_callback(self) -> None:
         sent: list[dict] = []
@@ -124,8 +124,8 @@ class SteamCandidateMachineResearchExecutorTests(unittest.TestCase):
             )
 
         self.assertTrue(outcome["ok"])
-        self.assertEqual(sent[0]["preflight_verdict"], "WATCH")
-        self.assertNotIn("recommendation", sent[0])
+        self.assertEqual(sent[-1]["preflight_verdict"], "WATCH")
+        self.assertNotIn("recommendation", sent[-1])
 
 
 if __name__ == "__main__":

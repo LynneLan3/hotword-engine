@@ -95,6 +95,16 @@ def _as_machine_fields(
     return machine_fields.build_machine_fields(social=social, preflight_result=preflight_result)
 
 
+def _partial_machine_fields(machine: dict[str, Any]) -> dict[str, Any]:
+    allowed = {"强", "中", "弱", "无", "低", "高", "有"}
+    return {
+        key: value
+        for key, value in machine.items()
+        if key in {"trends_result", "social_result", "serp_competition", "keyword_opportunity"}
+        and _text(value) in allowed
+    }
+
+
 def _optional_existing_site_index() -> exclusion.ExistingSiteIndex | None:
     """Load live production index when explicitly enabled for job execution.
 
@@ -244,6 +254,21 @@ def run_job(
             except (OSError, ValueError):
                 pass
 
+    if not dry_run and _text(social.get("status")).upper() == "AVAILABLE":
+        partial_machine = _partial_machine_fields(
+            machine_fields.build_machine_fields(social=social, preflight_result=None)
+        )
+        if partial_machine:
+            m7c._post_callback(
+                m7c.build_steam_candidate_research_partial_callback(
+                    job=job,
+                    machine_fields=partial_machine,
+                    social=social,
+                    completed_at=m7a.now_iso(),
+                ),
+                post_fn=post_fn,
+            )
+
     verdict = _text(preflight_result.get("preflight_verdict")).upper()
     if verdict != preflight.MANUAL_REVIEW:
         return preflight_executor.run_job(
@@ -329,6 +354,35 @@ def run_job(
             "reused_research_artifact": reused_research,
             "dry_run": True,
             "sent": False,
+        }
+
+    partial_machine = _partial_machine_fields(machine)
+    if partial_machine or recommendation:
+        m7c._post_callback(
+            m7c.build_steam_candidate_research_partial_callback(
+                job=job,
+                machine_fields=partial_machine,
+                social=result.get("social") if isinstance(result, dict) else social,
+                result=result,
+                recommendation=recommendation,
+                completed_at=m7a.now_iso(),
+            ),
+            post_fn=post_fn,
+        )
+
+    if len(partial_machine) < 4:
+        return {
+            "ok": True,
+            "execution_status": m7c.EXEC_COMPLETED,
+            "callback_ok": True,
+            "callback_status": "PARTIAL",
+            "callback_payload": callback_payload,
+            "preflight_verdict": verdict,
+            "reused_preflight_artifact": reused_preflight,
+            "reused_research_artifact": reused_research,
+            "dry_run": False,
+            "sent": True,
+            "recommendation": recommendation.get("recommendation"),
         }
 
     callback_ok, callback_error = m7c._post_callback(callback_payload, post_fn=post_fn)

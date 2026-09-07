@@ -165,6 +165,52 @@ def build_steam_candidate_research_completed_callback(
     }
 
 
+def build_steam_candidate_research_partial_callback(
+    *,
+    job: dict[str, Any],
+    machine_fields: dict[str, Any],
+    social: dict[str, Any] | None = None,
+    result: dict[str, Any] | None = None,
+    recommendation: dict[str, Any] | None = None,
+    completed_at: str,
+) -> dict[str, Any]:
+    """Build a best-effort field update without closing the Research Job."""
+    payload: dict[str, Any] = {
+        "job_id": _text(job.get("job_id")),
+        "job_type": JOB_TYPE,
+        "steam_app_id": _text(job.get("steam_app_id")),
+        "game_name": _text(job.get("game_name")),
+        "research_cycle_date": _text(job.get("research_cycle_date")),
+        "execution_status": "PARTIAL",
+        "machine_fields": dict(machine_fields),
+        "completed_at": completed_at,
+    }
+    if isinstance(social, dict):
+        payload["social_summary"] = {
+            "status": _text(social.get("status")).upper(),
+            "evidence_count": social.get("evidence_count", 0),
+            "cluster_count": social.get("cluster_count", 0),
+            "actionable_cluster_count": social.get("actionable_cluster_count", 0),
+            "watch_cluster_count": social.get("watch_cluster_count", 0),
+            "top_topics": _top_topics(social),
+        }
+    if isinstance(result, dict):
+        payload["serp_summary"] = _serp_summary(result, recommendation or {})
+    if isinstance(recommendation, dict) and _text(recommendation.get("recommendation")):
+        payload.update(
+            {
+                "recommendation": _text(recommendation.get("recommendation")),
+                "confidence": _text(recommendation.get("confidence")),
+                "reasons": recommendation.get("reasons") if isinstance(recommendation.get("reasons"), list) else [],
+                "blocking_reasons": recommendation.get("blocking_reasons") if isinstance(recommendation.get("blocking_reasons"), list) else [],
+                "missing_evidence": recommendation.get("missing_evidence") if isinstance(recommendation.get("missing_evidence"), list) else [],
+                "research_result_path": _relative_result_path(_text(job.get("job_id"))),
+                "recommendation_result_path": _relative_recommendation_path(_text(job.get("job_id"))),
+            }
+        )
+    return payload
+
+
 def build_steam_candidate_research_failed_callback(
     *,
     job: dict[str, Any],
