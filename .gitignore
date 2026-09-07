@@ -23,3 +23,4 @@ jobs/demand-*/
 jobs/search-*/
 jobs/steam-research-*/
 output/today_candidate_autocomplete_*.json
+.vercel
