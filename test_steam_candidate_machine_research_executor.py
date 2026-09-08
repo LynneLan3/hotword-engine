@@ -177,6 +177,45 @@ class SteamCandidateMachineResearchExecutorTests(unittest.TestCase):
                 dry_run=True,
             )
         self.assertEqual(outcome["callback_payload"]["machine_fields"]["trends_result"], "强")
+        self.assertEqual(outcome["callback_payload"]["recalc_evidence"]["trends_result"], "强")
+
+    def test_paid_provider_failure_is_terminal_and_does_not_recommend(self) -> None:
+        sent: list[dict] = []
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(
+            os.environ,
+            {
+                "STEAM_CANDIDATE_RESEARCH_API_URL": "https://sheet.example/exec",
+                "STEAM_CANDIDATE_RESEARCH_CALLBACK_TOKEN": "callback-secret",
+            },
+        ):
+            root = Path(tmp)
+            outcome = executor.run_job(
+                self._write_job(root),
+                root=root,
+                preflight_fn=lambda _job, **kwargs: {
+                    "preflight_verdict": preflight.MANUAL_REVIEW,
+                    "preflight_reason": "PASSED_AUTOMATIC_NOISE_AND_COMPETITION_FILTERS",
+                    "autocomplete": {"status": "AVAILABLE", "guide_intent": True},
+                    "serp": {"queries": [{"status": "SUPPORTED"}]},
+                    "checked_at": "2026-08-26T09:15:00+08:00",
+                },
+                research_fn=lambda job: {
+                    "job_id": job["job_id"], "job_type": job["job_type"], "steam_app_id": job["steam_app_id"],
+                    "game_name": job["game_name"], "manual_signals": {}, "research_status": "COMPLETED",
+                    "social": {}, "serp": {"status": "AVAILABLE"},
+                },
+                social_fn=lambda _job: {"status": "AVAILABLE", "evidence_count": 2, "top_clusters": []},
+                trends_fn=lambda _query: {"status": "UNAVAILABLE", "error": "missing_searchapi_api_key"},
+                include_trends=True,
+                force_paid_verification=True,
+                post_fn=lambda _url, body: (sent.append(body) or {"ok": True}),
+            )
+
+        self.assertFalse(outcome["ok"])
+        self.assertEqual(outcome["execution_status"], "FAILED")
+        self.assertEqual(outcome["callback_ok"], True)
+        self.assertNotIn("recommendation", sent[0])
+        self.assertIn("paid_verification_failed", sent[0]["error"])
 
 
 if __name__ == "__main__":

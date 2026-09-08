@@ -8,7 +8,7 @@ on:
         required: false
         default: '5'
       paid_attempt_budget:
-        description: Maximum fresh SearchApi candidate attempts in this run
+        description: Maximum paid-verification candidate games in this run
         required: false
         default: '3'
       target_app_ids:
@@ -72,6 +72,7 @@ jobs:
           python3 steam_candidate_daily_executor.py
           --max-jobs "$MAX_JOBS"
           --paid-attempt-budget "$PAID_ATTEMPT_BUDGET"
+          --human-ready
 
       - name: Upload Steam Candidate artifacts
         if: always()

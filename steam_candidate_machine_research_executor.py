@@ -46,6 +46,8 @@ def _enrich_research_result(
 ) -> dict[str, Any]:
     enriched = dict(result)
     manual_signals = dict(enriched.get("manual_signals") or {})
+    if machine.get("trends_result") not in {None, "", "未检查"}:
+        manual_signals["trends_result"] = machine["trends_result"]
     if machine.get("keyword_opportunity") in {"有", "无"}:
         manual_signals["keyword_opportunity"] = machine["keyword_opportunity"]
     enriched["manual_signals"] = manual_signals
@@ -84,6 +86,29 @@ def _extend_completed_callback(
     return payload
 
 
+def _paid_stage_errors(preflight_result: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    trends_status = _text(preflight_result.get("trends_status")).upper()
+    if trends_status != providers.STATUS_SUPPORTED:
+        errors.append(
+            "trends:" + (_text(preflight_result.get("trends_error")) or "provider_unavailable")
+        )
+    serp = preflight_result.get("serp") if isinstance(preflight_result.get("serp"), dict) else {}
+    queries = serp.get("queries") if isinstance(serp.get("queries"), list) else []
+    if not any(
+        _text(query.get("status")).upper() in {providers.STATUS_SUPPORTED, "AVAILABLE"}
+        for query in queries
+        if isinstance(query, dict)
+    ):
+        query_errors = [
+            _text(query.get("error"))
+            for query in queries
+            if isinstance(query, dict) and _text(query.get("error"))
+        ]
+        errors.append("serp:" + (" | ".join(query_errors) or "provider_unavailable"))
+    return list(dict.fromkeys(errors))
+
+
 def _as_machine_fields(
     result: dict[str, Any],
     *,
@@ -119,6 +144,7 @@ def _attach_trends(
     result["trends"] = {**raw, "cache_reused": reused}
     result["trends_result"] = _text(item.get("strength")) or "未检查"
     result["trends_status"] = _text(raw.get("status")).upper() or providers.STATUS_UNAVAILABLE
+    result["trends_error"] = _text(raw.get("error"))
     result["trends_cache_reused"] = reused
     if result["trends_status"] == providers.STATUS_UNAVAILABLE:
         result["provider_errors"] = list(result.get("provider_errors") or []) + [_text(raw.get("error")) or "trends_provider_unavailable"]
@@ -317,12 +343,51 @@ def run_job(
         result = run_research(job)
         if not isinstance(result, dict):
             raise RuntimeError("M7A runner returned no research result")
-        result["social"] = social
-        machine = machine_fields.build_machine_fields(social=social, preflight_result=preflight_result)
-        result = _enrich_research_result(result, preflight_result=preflight_result, machine=machine)
-        _write(research_path, result)
-    else:
-        machine = _as_machine_fields(result, social=social, preflight_result=preflight_result)
+    machine = machine_fields.build_machine_fields(social=social, preflight_result=preflight_result)
+    result["social"] = social
+    result = _enrich_research_result(result, preflight_result=preflight_result, machine=machine)
+    _write(research_path, result)
+
+    if include_trends:
+        paid_errors = _paid_stage_errors(preflight_result)
+        if paid_errors:
+            result["research_status"] = m7c.EXEC_FAILED
+            result["error"] = "paid_verification_failed: " + " | ".join(paid_errors)[:300]
+            result["provider_errors"] = list(dict.fromkeys(
+                list(result.get("provider_errors") or []) + paid_errors
+            ))
+            _write(research_path, result)
+            callback_payload = m7c.build_steam_candidate_research_failed_callback(
+                job=job,
+                result=result,
+                error=result["error"],
+            )
+            if dry_run:
+                return {
+                    "ok": True,
+                    "execution_status": m7c.EXEC_FAILED,
+                    "callback_ok": None,
+                    "callback_payload": callback_payload,
+                    "preflight_verdict": verdict,
+                    "reused_preflight_artifact": reused_preflight,
+                    "reused_research_artifact": reused_research,
+                    "dry_run": True,
+                    "sent": False,
+                }
+            callback_ok, callback_error = m7c._post_callback(callback_payload, post_fn=post_fn)
+            m7c._update_status_json(root, job_id, callback_ok=callback_ok, callback_error=callback_error)
+            return {
+                "ok": False,
+                "execution_status": m7c.EXEC_FAILED,
+                "callback_ok": callback_ok,
+                "callback_error": callback_error,
+                "callback_payload": callback_payload,
+                "preflight_verdict": verdict,
+                "reused_preflight_artifact": reused_preflight,
+                "reused_research_artifact": reused_research,
+                "dry_run": False,
+                "sent": True,
+            }
 
     recommendation: dict[str, Any] | None = None
     if recommendation_path.exists():
