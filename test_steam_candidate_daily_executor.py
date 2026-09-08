@@ -86,6 +86,36 @@ def _run_success(
 
 
 class SteamCandidateDailyExecutorTests(unittest.TestCase):
+    def test_human_ready_flow_runs_free_all_then_paid_top_three(self) -> None:
+        jobs = [_job(str(9300 + index), first_round_type="🔥趋势") for index in range(5)]
+        events: list[tuple[str, str]] = []
+
+        def free(job_path: Path, *, root: Path, existing_site_index=None) -> dict:
+            job = json.loads(job_path.read_text(encoding="utf-8"))
+            events.append(("free", job["steam_app_id"]))
+            artifact = root / "jobs" / job["job_id"] / "steam_candidate_research_result.json"
+            artifact.parent.mkdir(parents=True, exist_ok=True)
+            artifact.write_text(json.dumps({
+                "research_stage": "FREE_FIRST",
+                "preflight": {"checked_at": "2026-09-08T10:00:00", "autocomplete": {"status": "AVAILABLE", "guide_intent": True}},
+                "social": {"evidence_count": 5},
+            }), encoding="utf-8")
+            return {"execution_status": "FREE_RESEARCH_COMPLETED"}
+
+        def paid(job_path: Path, *, root: Path, **kwargs) -> dict:
+            job = json.loads(job_path.read_text(encoding="utf-8"))
+            events.append(("paid", job["steam_app_id"]))
+            return {"execution_status": "COMPLETED", "callback_ok": True}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = executor.run_human_ready_daily_executor(
+                root=Path(tmp), fetch_fn=_fetch_fn(jobs), free_first_fn=free, paid_run_fn=paid,
+                now=datetime(2026, 9, 8, 10, 0, 0),
+            )
+        self.assertEqual([event[0] for event in events], ["free"] * 5 + ["paid"] * 3)
+        self.assertEqual(summary["paid_gate"]["new_paid_candidate_count"], 3)
+        self.assertEqual(summary["non_top3_paid_calls"], 0)
+
     def test_preliminary_rank_uses_free_signals_and_excludes_controls(self) -> None:
         jobs = [
             _job("9100", first_round_type="🏢大盘对照"),

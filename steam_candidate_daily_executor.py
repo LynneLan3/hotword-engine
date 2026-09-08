@@ -30,6 +30,8 @@ TARGET_APP_IDS_ENV = "STEAM_CANDIDATE_TARGET_APP_IDS"
 CONTINUE_ON_CALLBACK_FAIL_ENV = "STEAM_CANDIDATE_CONTINUE_ON_CALLBACK_FAIL"
 DEFAULT_MAX_TOTAL_JOBS = 5
 DEFAULT_PAID_ATTEMPT_BUDGET = 3
+HUMAN_READY_ENV = "STEAM_CANDIDATE_HUMAN_READY"
+DAILY_PAID_CANDIDATE_BUDGET = 3
 INJECTED_FETCH_URL = "https://steam.example/exec?action=pendingSteamCandidateResearchJobs"
 DEFAULT_REGISTRY_SITES = live_sources.DEFAULT_REGISTRY_SITES
 DEFAULT_REGISTRY_GAMES = live_sources.DEFAULT_REGISTRY_GAMES
@@ -88,6 +90,10 @@ def _continue_on_callback_fail() -> bool:
         "true",
         "yes",
     }
+
+
+def _human_ready_enabled() -> bool:
+    return os.environ.get(HUMAN_READY_ENV, "").strip().lower() in {"1", "true", "yes"}
 
 
 def _filter_jobs_by_target(
@@ -341,6 +347,111 @@ def _result_summary(job: dict[str, Any], outcome: dict[str, Any], reused: bool) 
     }
 
 
+def _read_artifact(root: Path, job: dict[str, Any]) -> dict[str, Any]:
+    path = root / "jobs" / _text(job.get("job_id")) / "steam_candidate_research_result.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _write_temp_job(temp_root: Path, job: dict[str, Any]) -> Path:
+    path = temp_root / f"{_text(job.get('job_id'))}.json"
+    path.write_text(json.dumps(job, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def run_human_ready_daily_executor(
+    *,
+    root: Path = ROOT,
+    fetch_fn: Callable[[str], dict[str, Any]] | None = None,
+    free_first_fn: Callable[..., dict[str, Any]] | None = None,
+    paid_run_fn: RunFn | None = None,
+    max_jobs: int | None = None,
+    paid_attempt_budget: int | None = None,
+    dry_run: bool = False,
+    now: datetime | None = None,
+    existing_site_index: exclusion.ExistingSiteIndex | None = None,
+) -> dict[str, Any]:
+    """Run the existing daily machinery in G040 dependency order."""
+    started = now or datetime.now()
+    if fetch_fn is None:
+        payload = fetcher.fetch_pending_steam_candidate_research_jobs()
+    else:
+        payload = fetcher.fetch_pending_steam_candidate_research_jobs(url=INJECTED_FETCH_URL, fetch_fn=fetch_fn)
+    if existing_site_index is not None:
+        site_index = existing_site_index
+        source_meta = {"mode": "injected_index"}
+    else:
+        site_index, source_meta = _default_existing_site_index(allow_sibling_registry=fetch_fn is None)
+    pending_fetched, jobs, existing_excluded = normalize_and_sort_jobs(payload, existing_site_index=site_index)
+    free_first_fn = free_first_fn or machine_research_executor.run_free_first_job
+    paid_run_fn = paid_run_fn or machine_research_executor.run_job
+    budget = min(resolve_limits(max_jobs, paid_attempt_budget)[1], DAILY_PAID_CANDIDATE_BUDGET)
+    run_date = started.strftime("%Y%m%d")
+    free_results: list[dict[str, Any]] = []
+    with tempfile.TemporaryDirectory(prefix="steam-candidate-human-ready-") as temp_dir:
+        temp_root = Path(temp_dir)
+        if not dry_run:
+            for job in jobs:
+                try:
+                    outcome = free_first_fn(_write_temp_job(temp_root, job), root=root, existing_site_index=site_index)
+                except TypeError:
+                    outcome = free_first_fn(_write_temp_job(temp_root, job), root=root)
+                free_results.append(outcome if isinstance(outcome, dict) else {"execution_status": "FAILED"})
+        artifacts = {
+            _text(job.get("steam_app_id")): _read_artifact(root, job)
+            for job in jobs
+        }
+        ranking = preliminary_rank_candidates(jobs, artifacts, existing_site_index=site_index)
+        paid_cache = {
+            app_id for app_id, artifact in artifacts.items()
+            if _text(artifact.get("research_stage")).upper() == "PAID_FINAL"
+            and _text((artifact.get("preflight") or {}).get("trends_result")) not in {"", "未检查"}
+        }
+        gate = select_paid_top_candidates(ranking, paid_cache=paid_cache, daily_candidate_budget=budget)
+        paid_results: list[dict[str, Any]] = []
+        if not dry_run:
+            for selected in gate["selected"]:
+                if selected["paid_cache_hit"]:
+                    paid_results.append({"execution_status": "PAID_CACHE_REUSED", "callback_ok": None})
+                    continue
+                job = next(job for job in jobs if _text(job.get("steam_app_id")) == selected["steam_app_id"])
+                try:
+                    outcome = paid_run_fn(
+                        _write_temp_job(temp_root, job),
+                        root=root,
+                        existing_site_index=site_index,
+                        paid_serp_enabled=True,
+                        force_paid_verification=True,
+                        include_trends=True,
+                    )
+                except TypeError:
+                    outcome = paid_run_fn(_write_temp_job(temp_root, job), root=root)
+                paid_results.append(outcome if isinstance(outcome, dict) else {"execution_status": "FAILED"})
+    summary = {
+        "run_date": started.strftime("%Y-%m-%d"),
+        "pending_fetched": pending_fetched,
+        "unique_candidates": len(jobs),
+        "existing_sites_excluded": existing_excluded,
+        "existing_sites_excluded_count": len(existing_excluded),
+        "existing_site_sources": source_meta,
+        "free_first_processed": len(free_results),
+        "preliminary_ranking": ranking,
+        "paid_gate": gate,
+        "paid_processed": len(paid_results),
+        "paid_results": paid_results,
+        "daily_paid_candidate_budget": budget,
+        "non_top3_paid_calls": 0,
+        "dry_run": bool(dry_run),
+        "started_at": started.isoformat(timespec="seconds"),
+        "finished_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    _write_summary(root / "jobs" / f"daily-steam-candidate-research-{run_date}" / "human_ready_daily_run_summary.json", summary)
+    return summary
+
+
 def _fresh_serp_unavailable(root: Path, job: dict[str, Any]) -> bool:
     path = root / "jobs" / _text(job.get("job_id")) / "steam_candidate_research_result.json"
     if not path.exists():
@@ -417,7 +528,16 @@ def run_daily_executor(
     dry_run: bool = False,
     now: datetime | None = None,
     existing_site_index: exclusion.ExistingSiteIndex | None = None,
+    human_ready: bool | None = None,
 ) -> dict[str, Any]:
+    if human_ready is None:
+        human_ready = _human_ready_enabled()
+    if human_ready:
+        return run_human_ready_daily_executor(
+            root=root, fetch_fn=fetch_fn, max_jobs=max_jobs,
+            paid_attempt_budget=paid_attempt_budget, dry_run=dry_run,
+            now=now, existing_site_index=existing_site_index,
+        )
     job_limit, paid_budget = resolve_limits(max_jobs, paid_attempt_budget)
     run_fn = run_fn or machine_research_executor.run_job
     started = now or datetime.now()
@@ -548,12 +668,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--max-jobs", type=int, default=None)
     parser.add_argument("--paid-attempt-budget", type=int, default=None)
+    parser.add_argument("--human-ready", action="store_true")
     args = parser.parse_args(argv)
     try:
         summary = run_daily_executor(
             max_jobs=args.max_jobs,
             paid_attempt_budget=args.paid_attempt_budget,
             dry_run=args.dry_run,
+            human_ready=args.human_ready,
         )
     except (SystemExit, ValueError) as exc:
         print(f"ERROR: {exc}")
