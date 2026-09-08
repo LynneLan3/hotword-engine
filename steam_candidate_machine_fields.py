@@ -192,8 +192,18 @@ def build_machine_fields(
             if text and text not in query_clusters:
                 query_clusters.append(text)
 
+    preflight = _as_dict(preflight_result)
+    paid_state = _text(
+        preflight.get("trends_provider_state") or preflight.get("paid_provider_state")
+    ).upper()
+    paid_reason = _text(
+        preflight.get("trends_provider_reason")
+        or preflight.get("paid_provider_reason")
+        or preflight.get("trends_error")
+    )
+
     return {
-        "trends_result": _text(_as_dict(preflight_result).get("trends_result")) or "未检查",
+        "trends_result": _text(preflight.get("trends_result")) or "未检查",
         "social_result": social_verdict,
         "social_verdict": social_verdict,
         "social_one_liner": social_one_liner,
@@ -201,4 +211,8 @@ def build_machine_fields(
         "keyword_opportunity": compute_keyword_opportunity(preflight_result),
         "dedicated_wiki_domains": dedicated_domains[:5],
         "query_clusters": query_clusters[:8],
+        "provider_terminal_state": paid_state or None,
+        "provider_terminal_reason": paid_reason or None,
+        "provider_usage": preflight.get("paid_provider_usage"),
+        "machine_research_terminal": bool(paid_state),
     }

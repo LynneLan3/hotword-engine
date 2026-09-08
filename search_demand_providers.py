@@ -41,6 +41,10 @@ KIND_RELATED_QUERY = "related_query"
 KIND_ORGANIC_RESULT = "organic_result"
 
 SEARCHAPI_SEARCH_ENDPOINT = "https://www.searchapi.io/api/v1/search"
+SEARCHAPI_ACCOUNT_ENDPOINT = "https://www.searchapi.io/api/v1/me"
+PAID_PROVIDER_RATE_LIMITED = "PAID_PROVIDER_RATE_LIMITED"
+CREDITS_EXHAUSTED = "CREDITS_EXHAUSTED"
+PAID_PROVIDER_UNKNOWN = "PAID_PROVIDER_UNKNOWN"
 
 UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -60,6 +64,41 @@ BING_MAPS_MARKERS = (
 
 
 FetchFn = Callable[[str, dict[str, str] | None], dict[str, Any]]
+
+_paid_guard = {
+    "enabled": True,
+    "account_checked": False,
+    "account": {},
+    "state": None,
+    "reason": None,
+}
+
+
+def reset_searchapi_paid_circuit() -> None:
+    """Reset the process-local paid guard at the start of one daily run."""
+    _paid_guard.update(
+        enabled=True, account_checked=False, account={}, state=None, reason=None
+    )
+
+
+def _searchapi_paid_result(
+    source: str,
+    query: str,
+    state: str,
+    reason: str,
+    *,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    result = provider_result(
+        source,
+        STATUS_UNAVAILABLE,
+        query,
+        error=reason,
+        metadata=metadata,
+    )
+    result["provider_state"] = state
+    result["provider_reason"] = reason
+    return result
 
 
 def provider_result(
@@ -102,6 +141,11 @@ def default_http_get(
                 "status": int(resp.status),
                 "body": body,
                 "url": resp.geturl(),
+                "headers": {
+                    key.lower(): value
+                    for key, value in resp.headers.items()
+                    if key.lower() in {"retry-after", "x-ratelimit-reset", "content-type"}
+                },
                 "error": None,
             }
     except urllib.error.HTTPError as e:
@@ -112,6 +156,11 @@ def default_http_get(
             "status": int(e.code),
             "body": body,
             "url": url,
+            "headers": {
+                key.lower(): value
+                for key, value in (e.headers.items() if e.headers else [])
+                if key.lower() in {"retry-after", "x-ratelimit-reset", "content-type"}
+            },
             "error": f"HTTPError {e.code}",
         }
     except Exception as e:
@@ -120,6 +169,7 @@ def default_http_get(
             "status": 0,
             "body": "",
             "url": url,
+            "headers": {},
             "error": f"{type(e).__name__}: {e}",
         }
 
@@ -375,6 +425,7 @@ def _fetch(
             "status": 0,
             "body": "",
             "url": url,
+            "headers": {},
             "error": f"{type(e).__name__}: {e}",
         }
     if not isinstance(resp, dict):
@@ -390,6 +441,11 @@ def _fetch(
         "status": int(resp.get("status") or 0),
         "body": str(resp.get("body") or ""),
         "url": str(resp.get("url") or url),
+        "headers": {
+            str(key).lower(): str(value)
+            for key, value in (resp.get("headers") or {}).items()
+            if str(key).lower() in {"retry-after", "x-ratelimit-reset", "content-type"}
+        },
         "error": resp.get("error"),
     }
 
@@ -451,6 +507,128 @@ def searchapi_google_trends_url(
             "q": query,
             "time": time,
             "geo": geo,
+        }
+    )
+
+
+def _account_value(payload: Any, names: set[str]) -> Any:
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            if str(key).casefold() in names:
+                return value
+        for value in payload.values():
+            found = _account_value(value, names)
+            if found is not None:
+                return found
+    elif isinstance(payload, list):
+        for value in payload:
+            found = _account_value(value, names)
+            if found is not None:
+                return found
+    return None
+
+
+def _number(value: Any) -> int | float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        parsed = float(str(value).replace(",", "").strip())
+    except (TypeError, ValueError):
+        return None
+    return int(parsed) if parsed.is_integer() else parsed
+
+
+def _account_metadata(payload: Any, resp: dict[str, Any], endpoint: str) -> dict[str, Any]:
+    return {
+        "account_endpoint": endpoint,
+        "http_status": resp["status"],
+        "final_url": resp["url"],
+        "remaining_credits": _number(
+            _account_value(payload, {"remaining_credits", "credits_remaining", "remaining"})
+        ),
+        "searches_this_hour": _number(
+            _account_value(payload, {"searches_this_hour", "hourly_searches", "searches_hour"})
+        ),
+        "hourly_rate_limit": _number(
+            _account_value(payload, {"hourly_rate_limit", "rate_limit_hourly", "hourly_limit"})
+        ),
+        "retry_after": (resp.get("headers") or {}).get("retry-after"),
+        "provider_reset": (resp.get("headers") or {}).get("x-ratelimit-reset"),
+    }
+
+
+def probe_searchapi_account(
+    *, fetch_fn: FetchFn | None = None, api_key: str | None = None
+) -> dict[str, Any]:
+    """Read SearchApi usage once; this endpoint is not a paid search."""
+    key = api_key if api_key is not None else os.environ.get("SEARCHAPI_API_KEY")
+    endpoint = SEARCHAPI_ACCOUNT_ENDPOINT
+    if not str(key or "").strip():
+        return {"state": PAID_PROVIDER_UNKNOWN, "reason": "missing_searchapi_api_key", "metadata": {"account_endpoint": endpoint, "http_status": 0}}
+    resp = _fetch(
+        fetch_fn,
+        endpoint,
+        headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},
+        timeout=15,
+    )
+    try:
+        payload = json.loads(resp["body"]) if resp["body"] else {}
+    except (TypeError, ValueError):
+        payload = {}
+    metadata = _account_metadata(payload, resp, endpoint)
+    if resp["status"] == 429:
+        return {"state": PAID_PROVIDER_RATE_LIMITED, "reason": "searchapi_account_http_429", "metadata": metadata}
+    if not resp["ok"] or not 200 <= resp["status"] < 300 or not isinstance(payload, dict):
+        return {"state": PAID_PROVIDER_UNKNOWN, "reason": f"searchapi_account_http_{resp['status'] or 'error'}", "metadata": metadata}
+    remaining = metadata["remaining_credits"]
+    searches = metadata["searches_this_hour"]
+    hourly_limit = metadata["hourly_rate_limit"]
+    if remaining is None or searches is None or hourly_limit is None:
+        return {"state": PAID_PROVIDER_UNKNOWN, "reason": "searchapi_account_usage_unknown", "metadata": metadata}
+    if remaining <= 0:
+        return {"state": CREDITS_EXHAUSTED, "reason": "searchapi_remaining_credits_zero", "metadata": metadata}
+    if searches >= hourly_limit:
+        return {"state": PAID_PROVIDER_RATE_LIMITED, "reason": "searchapi_hourly_rate_limit_reached", "metadata": metadata}
+    return {"state": "ACCOUNT_OK", "reason": None, "metadata": metadata}
+
+
+def _paid_gate(
+    source: str,
+    query: str,
+    *,
+    fetch_fn: FetchFn | None,
+    api_key: str,
+) -> dict[str, Any] | None:
+    if not _paid_guard["enabled"]:
+        return None
+    if not _paid_guard["account_checked"]:
+        account = probe_searchapi_account(fetch_fn=fetch_fn, api_key=api_key)
+        _paid_guard["account_checked"] = True
+        _paid_guard["account"] = account
+        if account["state"] != "ACCOUNT_OK":
+            _paid_guard["state"] = account["state"]
+            _paid_guard["reason"] = account["reason"]
+    if _paid_guard["state"]:
+        return _searchapi_paid_result(
+            source,
+            query,
+            _paid_guard["state"],
+            _paid_guard["reason"] or "searchapi_paid_circuit_open",
+            metadata={"account": _paid_guard["account"].get("metadata", {})},
+        )
+    return None
+
+
+def _open_paid_circuit(state: str, reason: str, resp: dict[str, Any]) -> None:
+    _paid_guard["state"] = state
+    _paid_guard["reason"] = reason
+    _paid_guard.setdefault("account", {})
+    metadata = _paid_guard["account"].setdefault("metadata", {})
+    metadata.update(
+        {
+            "first_search_http_status": resp["status"],
+            "retry_after": (resp.get("headers") or {}).get("retry-after"),
+            "provider_reset": (resp.get("headers") or {}).get("x-ratelimit-reset"),
         }
     )
 
@@ -679,6 +857,15 @@ def probe_searchapi_google_organic(
             metadata=metadata,
         )
 
+    blocked = _paid_gate(
+        SOURCE_SEARCHAPI_GOOGLE_ORGANIC, query, fetch_fn=fetch_fn, api_key=str(key)
+    )
+    if blocked is not None:
+        blocked["metadata"].update(metadata)
+        return blocked
+    if _paid_guard["enabled"]:
+        metadata["account"] = _paid_guard["account"].get("metadata", {})
+
     # Paid provider requests are single-attempt. Never retry a paid request:
     # a transport failure may still have been billed by SearchApi.
     resp = _fetch(
@@ -700,6 +887,17 @@ def probe_searchapi_google_organic(
             STATUS_UNAVAILABLE,
             query,
             error="searchapi_transport_error",
+            metadata=metadata,
+        )
+    if resp["status"] == 429:
+        _open_paid_circuit(PAID_PROVIDER_RATE_LIMITED, "searchapi_http_429", resp)
+        metadata["retry_after"] = (resp.get("headers") or {}).get("retry-after")
+        metadata["provider_reset"] = (resp.get("headers") or {}).get("x-ratelimit-reset")
+        return _searchapi_paid_result(
+            SOURCE_SEARCHAPI_GOOGLE_ORGANIC,
+            query,
+            PAID_PROVIDER_RATE_LIMITED,
+            "searchapi_http_429",
             metadata=metadata,
         )
     if not resp["ok"] or not 200 <= resp["status"] < 300:
@@ -800,6 +998,14 @@ def probe_searchapi_google_trends(
     metadata = {"http_status": 0, "endpoint": url, "time": time, "geo": geo, "billing_status": "UNKNOWN"}
     if not str(key or "").strip():
         return provider_result(SOURCE_SEARCHAPI_GOOGLE_TRENDS, STATUS_UNAVAILABLE, query, error="missing_searchapi_api_key", metadata=metadata)
+    blocked = _paid_gate(
+        SOURCE_SEARCHAPI_GOOGLE_TRENDS, query, fetch_fn=fetch_fn, api_key=str(key)
+    )
+    if blocked is not None:
+        blocked["metadata"].update(metadata)
+        return blocked
+    if _paid_guard["enabled"]:
+        metadata["account"] = _paid_guard["account"].get("metadata", {})
     resp = _fetch(
         fetch_fn,
         url,
@@ -810,6 +1016,17 @@ def probe_searchapi_google_trends(
     if resp["status"] == 0:
         metadata["transport_error"] = _redact_searchapi_transport_error(resp.get("error"), str(key))
         return provider_result(SOURCE_SEARCHAPI_GOOGLE_TRENDS, STATUS_UNAVAILABLE, query, error="searchapi_transport_error", metadata=metadata)
+    if resp["status"] == 429:
+        _open_paid_circuit(PAID_PROVIDER_RATE_LIMITED, "searchapi_http_429", resp)
+        metadata["retry_after"] = (resp.get("headers") or {}).get("retry-after")
+        metadata["provider_reset"] = (resp.get("headers") or {}).get("x-ratelimit-reset")
+        return _searchapi_paid_result(
+            SOURCE_SEARCHAPI_GOOGLE_TRENDS,
+            query,
+            PAID_PROVIDER_RATE_LIMITED,
+            "searchapi_http_429",
+            metadata=metadata,
+        )
     if not resp["ok"] or not 200 <= resp["status"] < 300:
         return provider_result(SOURCE_SEARCHAPI_GOOGLE_TRENDS, STATUS_UNAVAILABLE, query, error="searchapi_http_error", metadata=metadata)
     try:

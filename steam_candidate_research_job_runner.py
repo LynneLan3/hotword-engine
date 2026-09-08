@@ -26,6 +26,7 @@ API_URL_ENV = "STEAM_CANDIDATE_RESEARCH_API_URL"
 CALLBACK_TOKEN_ENV = "STEAM_CANDIDATE_RESEARCH_CALLBACK_TOKEN"
 CALLBACK_TIMEOUT_SEC = 45
 ERROR_MAX_CHARS = 300
+CALLBACK_BODY_MAX_CHARS = 500
 
 PostFn = Callable[[str, dict[str, Any]], Any]
 
@@ -171,7 +172,7 @@ def build_steam_candidate_research_failed_callback(
     result: dict[str, Any] | None = None,
     error: Any = None,
 ) -> dict[str, Any]:
-    return {
+    payload = {
         "job_id": _text((result or {}).get("job_id") or job.get("job_id")),
         "job_type": JOB_TYPE,
         "steam_app_id": _text((result or {}).get("steam_app_id") or job.get("steam_app_id")),
@@ -180,6 +181,13 @@ def build_steam_candidate_research_failed_callback(
         "execution_status": EXEC_FAILED,
         "error": _error_text(error if error is not None else _result_error(result)),
     }
+    if isinstance(result, dict):
+        if isinstance(result.get("machine_fields"), dict):
+            payload["machine_fields"] = result["machine_fields"]
+        for key in ("provider_terminal_state", "provider_terminal_reason", "paid_provider_usage"):
+            if result.get(key) is not None:
+                payload[key] = result[key]
+    return payload
 
 
 def _update_status_json(
@@ -202,7 +210,44 @@ def _update_status_json(
     _write_json(path, status)
 
 
-def _http_post(url: str, body: dict[str, Any]) -> bool:
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *_args: Any, **_kwargs: Any) -> None:
+        return None
+
+
+def _callback_response_details(
+    *,
+    code: int | None = None,
+    raw: bytes = b"",
+    headers: dict[str, Any] | None = None,
+    redirect_status: int | None = None,
+    exception: BaseException | None = None,
+) -> dict[str, Any]:
+    text = raw.decode("utf-8", errors="replace") if raw else ""
+    details: dict[str, Any] = {
+        "http_status": redirect_status or code,
+        "redirect_status": redirect_status,
+        "final_status": code,
+        "content_type": next(
+            (str(value) for key, value in (headers or {}).items() if str(key).lower() == "content-type"),
+            None,
+        ),
+        "response_body": text[:CALLBACK_BODY_MAX_CHARS],
+        "parsed_ok": None,
+    }
+    if exception is not None:
+        details["exception_class"] = type(exception).__name__
+    try:
+        parsed = json.loads(text) if text else {}
+    except json.JSONDecodeError as exc:
+        details["parsed_error"] = type(exc).__name__
+    else:
+        details["parsed_ok"] = parsed.get("ok") if isinstance(parsed, dict) else None
+        details["parsed_type"] = type(parsed).__name__
+    return details
+
+
+def _http_post(url: str, body: dict[str, Any]) -> dict[str, Any]:
     payload = json.dumps(body, ensure_ascii=False).encode("utf-8")
     request = urllib.request.Request(
         url,
@@ -214,7 +259,8 @@ def _http_post(url: str, body: dict[str, Any]) -> bool:
         },
         method="POST",
     )
-    opener = urllib.request.build_opener(urllib.request.HTTPHandler())
+    opener = urllib.request.build_opener(_NoRedirectHandler(), urllib.request.HTTPHandler())
+    redirect_status: int | None = None
     try:
         with opener.open(request, timeout=CALLBACK_TIMEOUT_SEC) as response:
             code = response.getcode() or 200
@@ -224,14 +270,15 @@ def _http_post(url: str, body: dict[str, Any]) -> bool:
         code = exc.code
         raw = exc.read() or b""
         headers = dict(exc.headers.items() if exc.headers else {})
-    except Exception:
-        return False
+    except Exception as exc:
+        return {"ok": False, **_callback_response_details(exception=exc)}
 
     location = next(
         (value.strip() for key, value in headers.items() if key.lower() == "location" and value),
         "",
     )
     if location and code in {301, 302, 303, 307, 308}:
+        redirect_status = code
         try:
             redirect = urllib.request.Request(
                 location,
@@ -241,40 +288,63 @@ def _http_post(url: str, body: dict[str, Any]) -> bool:
             with opener.open(redirect, timeout=CALLBACK_TIMEOUT_SEC) as response:
                 code = response.getcode() or 200
                 raw = response.read()
-        except Exception:
-            return False
+                headers = dict(response.headers.items())
+        except urllib.error.HTTPError as exc:
+            code = exc.code
+            raw = exc.read() or b""
+            headers = dict(exc.headers.items() if exc.headers else {})
+        except Exception as exc:
+            return {"ok": False, **_callback_response_details(
+                code=None,
+                headers=headers,
+                redirect_status=redirect_status,
+                exception=exc,
+            )}
+    details = _callback_response_details(
+        code=code,
+        raw=raw,
+        headers=headers,
+        redirect_status=redirect_status,
+    )
     if code < 200 or code >= 300:
-        return False
-    try:
-        parsed = json.loads(raw.decode("utf-8", errors="replace")) if raw else {}
-    except json.JSONDecodeError:
-        return False
-    return isinstance(parsed, dict) and bool(parsed.get("ok"))
+        return {"ok": False, **details}
+    return {"ok": details.get("parsed_ok") is True, **details}
 
 
 def _post_callback(
     payload: dict[str, Any],
     *,
     post_fn: PostFn | None = None,
-) -> tuple[bool, str | None]:
+    with_details: bool = False,
+) -> tuple[bool, str | None] | tuple[bool, str | None, dict[str, Any]]:
+    def finish(
+        ok: bool, error: str | None, details: dict[str, Any] | None = None
+    ) -> tuple[bool, str | None] | tuple[bool, str | None, dict[str, Any]]:
+        if with_details:
+            return ok, error, details or {"ok": ok}
+        return ok, error
+
     url = _text(os.environ.get(API_URL_ENV))
     token = _text(os.environ.get(CALLBACK_TOKEN_ENV))
     if not url:
-        return False, f"{API_URL_ENV} is not set; refusing callback"
+        return finish(False, f"{API_URL_ENV} is not set; refusing callback", {"ok": False, "exception_class": "ConfigurationError"})
     if not token:
-        return False, f"{CALLBACK_TOKEN_ENV} is not set; refusing callback"
+        return finish(False, f"{CALLBACK_TOKEN_ENV} is not set; refusing callback", {"ok": False, "exception_class": "ConfigurationError"})
     request_body = dict(payload)
     request_body["token"] = token
     try:
         if post_fn is not None:
             response = post_fn(url, request_body)
             if isinstance(response, dict):
-                return bool(response.get("ok")), None if response.get("ok") else "callback_rejected"
-            return bool(response), None if response else "callback_rejected"
-        ok = _http_post(url, request_body)
-        return ok, None if ok else "callback_request_failed"
+                ok = response.get("ok") is True
+                return finish(ok, None if ok else "callback_rejected", response)
+            ok = response is True
+            return finish(ok, None if ok else "callback_rejected", {"ok": ok})
+        response = _http_post(url, request_body)
+        ok = response.get("ok") is True
+        return finish(ok, None if ok else "callback_request_failed", response)
     except Exception as exc:
-        return False, _error_text(exc)
+        return finish(False, _error_text(exc), {"ok": False, "exception_class": type(exc).__name__})
 
 
 def run_job(
@@ -349,7 +419,9 @@ def run_job(
             "callback_payload": callback_payload,
         }
 
-    callback_ok, callback_error = _post_callback(callback_payload, post_fn=post_fn)
+    callback_ok, callback_error, callback_diagnostics = _post_callback(
+        callback_payload, post_fn=post_fn, with_details=True
+    )
     _update_status_json(root, job_id, callback_ok=callback_ok, callback_error=callback_error)
     return {
         "ok": execution_status == EXEC_COMPLETED and callback_ok,
@@ -357,6 +429,7 @@ def run_job(
         "execution_status": execution_status,
         "callback_ok": callback_ok,
         "callback_error": callback_error,
+        "callback_diagnostics": callback_diagnostics,
         "dry_run": False,
         "sent": True,
         "reused_research_artifact": reused,

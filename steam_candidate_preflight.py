@@ -205,6 +205,9 @@ def summarize_serp_query(game_name: str, query: str, payload: dict[str, Any]) ->
         "query": query,
         "status": _text(payload.get("status")).upper() if isinstance(payload, dict) else "UNAVAILABLE",
         "error": payload.get("error") if isinstance(payload, dict) else "invalid_serp_payload",
+        "provider_state": payload.get("provider_state") if isinstance(payload, dict) else None,
+        "provider_reason": payload.get("provider_reason") if isinstance(payload, dict) else None,
+        "provider_metadata": payload.get("metadata") if isinstance(payload, dict) else {},
         "organic_count": len(items),
         "relevant_count": len(relevant),
         "irrelevant_count": irrelevant,
@@ -517,6 +520,11 @@ def evaluate_preflight(
     provider_errors = list(autocomplete.get("errors") or []) + [
         _text(query.get("error")) for query in serp_queries if query.get("error")
     ]
+    paid_states = [
+        _text(query.get("provider_state")).upper()
+        for query in serp_queries
+        if _text(query.get("provider_state"))
+    ]
     generic_intent = any(_GENERIC_INTENT_RE.search(_result_text(item)) for query in serp_queries for item in query.get("_items", []))
     contamination = (
         all_results >= 4
@@ -573,6 +581,20 @@ def evaluate_preflight(
             "contamination": contamination,
         },
         "provider_errors": provider_errors,
+        "paid_provider_state": paid_states[0] if paid_states else None,
+        "paid_provider_reason": next(
+            (_text(query.get("provider_reason")) for query in serp_queries if query.get("provider_reason")),
+            None,
+        ),
+        "paid_provider_usage": next(
+            (
+                query.get("provider_metadata", {}).get("account")
+                for query in serp_queries
+                if isinstance(query.get("provider_metadata"), dict)
+                and isinstance(query.get("provider_metadata", {}).get("account"), dict)
+            ),
+            None,
+        ),
         "searchapi_queries_used": len(serp_queries),
         "searchapi_queries_reused": sum(1 for query in serp_queries if query.get("cache_reused")),
         "social_supporting_evidence": _as_dict(job.get("social_supporting_evidence")),

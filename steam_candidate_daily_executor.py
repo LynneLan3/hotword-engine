@@ -23,6 +23,7 @@ import steam_candidate_research_job_runner as runner
 import steam_candidate_preflight as preflight
 import steam_candidate_machine_research_executor as machine_research_executor
 import today_action_pipeline as today_actions
+import search_demand_providers as providers
 
 ROOT = Path(__file__).resolve().parent
 JOB_LIMIT_ENV = "STEAM_CANDIDATE_RESEARCH_DAILY_JOB_LIMIT"
@@ -377,6 +378,7 @@ def run_human_ready_daily_executor(
 ) -> dict[str, Any]:
     """Run the existing daily machinery in G040 dependency order."""
     social_runner.reset_daily_provider_circuit_breaker()
+    providers.reset_searchapi_paid_circuit()
     started = now or datetime.now()
     if fetch_fn is None:
         payload = fetcher.fetch_pending_steam_candidate_research_jobs()

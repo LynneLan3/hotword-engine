@@ -90,8 +90,10 @@ def _paid_stage_errors(preflight_result: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     trends_status = _text(preflight_result.get("trends_status")).upper()
     if trends_status != providers.STATUS_SUPPORTED:
+        trends_state = _text(preflight_result.get("trends_provider_state")).upper()
         errors.append(
-            "trends:" + (_text(preflight_result.get("trends_error")) or "provider_unavailable")
+            "trends:" + (trends_state + ":" if trends_state else "")
+            + (_text(preflight_result.get("trends_error")) or "provider_unavailable")
         )
     serp = preflight_result.get("serp") if isinstance(preflight_result.get("serp"), dict) else {}
     queries = serp.get("queries") if isinstance(serp.get("queries"), list) else []
@@ -101,7 +103,11 @@ def _paid_stage_errors(preflight_result: dict[str, Any]) -> list[str]:
         if isinstance(query, dict)
     ):
         query_errors = [
-            _text(query.get("error"))
+            (
+                _text(query.get("provider_state")).upper() + ":"
+                if _text(query.get("provider_state"))
+                else ""
+            ) + _text(query.get("error"))
             for query in queries
             if isinstance(query, dict) and _text(query.get("error"))
         ]
@@ -145,6 +151,12 @@ def _attach_trends(
     result["trends_result"] = _text(item.get("strength")) or "未检查"
     result["trends_status"] = _text(raw.get("status")).upper() or providers.STATUS_UNAVAILABLE
     result["trends_error"] = _text(raw.get("error"))
+    result["trends_provider_state"] = _text(raw.get("provider_state")).upper()
+    result["trends_provider_reason"] = _text(raw.get("provider_reason"))
+    result["paid_provider_usage"] = (raw.get("metadata") or {}).get("account")
+    result["paid_provider_state"] = result["trends_provider_state"] or _text(
+        result.get("paid_provider_state")
+    ).upper()
     result["trends_cache_reused"] = reused
     if result["trends_status"] == providers.STATUS_UNAVAILABLE:
         result["provider_errors"] = list(result.get("provider_errors") or []) + [_text(raw.get("error")) or "trends_provider_unavailable"]
@@ -351,6 +363,20 @@ def run_job(
     if include_trends:
         paid_errors = _paid_stage_errors(preflight_result)
         if paid_errors:
+            result["provider_terminal_state"] = _text(
+                preflight_result.get("trends_provider_state")
+                or preflight_result.get("paid_provider_state")
+            ).upper() or None
+            result["provider_terminal_reason"] = _text(
+                preflight_result.get("trends_provider_reason")
+                or preflight_result.get("paid_provider_reason")
+                or paid_errors[0]
+            ) or None
+            result["paid_provider_usage"] = preflight_result.get("paid_provider_usage")
+            machine = machine_fields.build_machine_fields(
+                social=social, preflight_result=preflight_result
+            )
+            result["machine_fields"] = machine
             result["research_status"] = m7c.EXEC_FAILED
             result["error"] = "paid_verification_failed: " + " | ".join(paid_errors)[:300]
             result["provider_errors"] = list(dict.fromkeys(
@@ -374,13 +400,16 @@ def run_job(
                     "dry_run": True,
                     "sent": False,
                 }
-            callback_ok, callback_error = m7c._post_callback(callback_payload, post_fn=post_fn)
+            callback_ok, callback_error, callback_diagnostics = m7c._post_callback(
+                callback_payload, post_fn=post_fn, with_details=True
+            )
             m7c._update_status_json(root, job_id, callback_ok=callback_ok, callback_error=callback_error)
             return {
                 "ok": False,
                 "execution_status": m7c.EXEC_FAILED,
                 "callback_ok": callback_ok,
                 "callback_error": callback_error,
+                "callback_diagnostics": callback_diagnostics,
                 "callback_payload": callback_payload,
                 "preflight_verdict": verdict,
                 "reused_preflight_artifact": reused_preflight,
@@ -442,13 +471,16 @@ def run_job(
             "sent": False,
         }
 
-    callback_ok, callback_error = m7c._post_callback(callback_payload, post_fn=post_fn)
+    callback_ok, callback_error, callback_diagnostics = m7c._post_callback(
+        callback_payload, post_fn=post_fn, with_details=True
+    )
     m7c._update_status_json(root, job_id, callback_ok=callback_ok, callback_error=callback_error)
     return {
         "ok": callback_ok,
         "execution_status": m7c.EXEC_COMPLETED,
         "callback_ok": callback_ok,
         "callback_error": callback_error,
+        "callback_diagnostics": callback_diagnostics,
         "callback_payload": callback_payload,
         "preflight_verdict": verdict,
         "reused_preflight_artifact": reused_preflight,

@@ -11,6 +11,7 @@ from unittest import mock
 
 import steam_candidate_machine_research_executor as executor
 import steam_candidate_preflight as preflight
+import search_demand_providers as providers
 
 
 def _job() -> dict:
@@ -216,6 +217,53 @@ class SteamCandidateMachineResearchExecutorTests(unittest.TestCase):
         self.assertEqual(outcome["callback_ok"], True)
         self.assertNotIn("recommendation", sent[0])
         self.assertIn("paid_verification_failed", sent[0]["error"])
+
+    def test_paid_provider_terminal_reason_is_carried_with_machine_artifact(self) -> None:
+        sent: list[dict] = []
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(
+            os.environ,
+            {
+                "STEAM_CANDIDATE_RESEARCH_API_URL": "https://sheet.example/exec",
+                "STEAM_CANDIDATE_RESEARCH_CALLBACK_TOKEN": "callback-secret",
+            },
+        ):
+            root = Path(tmp)
+            outcome = executor.run_job(
+                self._write_job(root),
+                root=root,
+                preflight_fn=lambda _job, **kwargs: {
+                    "preflight_verdict": preflight.MANUAL_REVIEW,
+                    "preflight_reason": "PASSED_AUTOMATIC_NOISE_AND_COMPETITION_FILTERS",
+                    "autocomplete": {"status": "AVAILABLE", "guide_intent": True},
+                    "serp": {
+                        "queries": [{
+                            "status": "UNAVAILABLE",
+                            "error": "searchapi_http_429",
+                            "provider_state": providers.PAID_PROVIDER_RATE_LIMITED,
+                        }]
+                    },
+                    "checked_at": "2026-08-26T09:15:00+08:00",
+                },
+                research_fn=lambda job: {
+                    "job_id": job["job_id"], "job_type": job["job_type"], "steam_app_id": job["steam_app_id"],
+                    "game_name": job["game_name"], "manual_signals": {}, "research_status": "COMPLETED",
+                    "social": {}, "serp": {"status": "UNAVAILABLE"},
+                },
+                social_fn=lambda _job: {"status": "AVAILABLE", "evidence_count": 2, "top_clusters": []},
+                trends_fn=lambda _query: {
+                    "status": "UNAVAILABLE", "error": "searchapi_http_429",
+                    "provider_state": providers.PAID_PROVIDER_RATE_LIMITED,
+                    "provider_reason": "searchapi_http_429",
+                },
+                include_trends=True,
+                force_paid_verification=True,
+                post_fn=lambda _url, body: (sent.append(body) or {"ok": True}),
+            )
+        self.assertEqual(outcome["execution_status"], "FAILED")
+        self.assertEqual(sent[0]["provider_terminal_state"], providers.PAID_PROVIDER_RATE_LIMITED)
+        self.assertEqual(sent[0]["provider_terminal_reason"], "searchapi_http_429")
+        self.assertTrue(sent[0]["machine_fields"]["machine_research_terminal"])
+        self.assertNotIn("recommendation", sent[0])
 
 
 if __name__ == "__main__":
