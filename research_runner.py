@@ -938,6 +938,7 @@ def http_get(
     headers: dict[str, str] | None = None,
     timeout: int = 30,
     retries: int = 3,
+    fail_fast_rate_limit: bool = False,
 ) -> tuple[bytes, str]:
     h = {
         "User-Agent": UA,
@@ -953,6 +954,8 @@ def http_get(
             with urllib.request.urlopen(req, timeout=timeout, context=SSL_CTX) as resp:
                 return resp.read(), resp.geturl()
         except urllib.error.HTTPError as e:
+            if e.code == 429 and fail_fast_rate_limit:
+                raise RedditRateLimitedError("reddit_http_429") from e
             last_err = e
             if e.code in {429, 500, 502, 503, 504} and attempt < retries:
                 wait = 8 if e.code == 429 else 1.5
@@ -966,6 +969,10 @@ def http_get(
                 continue
             raise
     raise last_err or RuntimeError(url)
+
+
+class RedditRateLimitedError(Exception):
+    """Reddit confirmed a rate limit; abort this collection without retries."""
 
 
 def http_post_json(url: str, payload: dict[str, Any], timeout: int = 30) -> dict[str, Any]:
@@ -1425,7 +1432,11 @@ def reddit_search_rss(query: str) -> list[dict[str, str]]:
     url = "https://www.reddit.com/search.rss?" + urllib.parse.urlencode(
         {"q": query, "sort": "relevance", "t": "year"}
     )
-    data, _ = http_get(url, {"Accept": "application/atom+xml,application/xml;q=0.9"})
+    data, _ = http_get(
+        url,
+        {"Accept": "application/atom+xml,application/xml;q=0.9"},
+        fail_fast_rate_limit=True,
+    )
     return parse_atom(data)
 
 
@@ -1433,7 +1444,11 @@ def reddit_post_rss(permalink_url: str) -> list[dict[str, str]]:
     if not permalink_url.endswith("/"):
         permalink_url += "/"
     rss_url = permalink_url + ".rss"
-    data, _ = http_get(rss_url, {"Accept": "application/atom+xml,application/xml;q=0.9"})
+    data, _ = http_get(
+        rss_url,
+        {"Accept": "application/atom+xml,application/xml;q=0.9"},
+        fail_fast_rate_limit=True,
+    )
     return parse_atom(data)
 
 
@@ -1466,6 +1481,8 @@ def collect_reddit(
     for q in queries:
         try:
             found = reddit_search_rss(q)
+        except RedditRateLimitedError:
+            raise
         except Exception as e:
             log(f"  Reddit search failed ({q}): {e}")
             time.sleep(6)
@@ -1526,6 +1543,8 @@ def collect_reddit(
             break
         try:
             thread = reddit_post_rss(post["url"])
+        except RedditRateLimitedError:
+            raise
         except Exception as e:
             log(f"  Reddit thread failed ({post['url']}): {e}")
             thread = []

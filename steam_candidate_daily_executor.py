@@ -18,6 +18,7 @@ from typing import Any, Callable
 import fetch_pending_steam_candidate_research_jobs as fetcher
 import existing_site_exclusion as exclusion
 import existing_site_live_sources as live_sources
+import game_wide_social_runner as social_runner
 import steam_candidate_research_job_runner as runner
 import steam_candidate_preflight as preflight
 import steam_candidate_machine_research_executor as machine_research_executor
@@ -375,6 +376,7 @@ def run_human_ready_daily_executor(
     existing_site_index: exclusion.ExistingSiteIndex | None = None,
 ) -> dict[str, Any]:
     """Run the existing daily machinery in G040 dependency order."""
+    social_runner.reset_daily_provider_circuit_breaker()
     started = now or datetime.now()
     if fetch_fn is None:
         payload = fetcher.fetch_pending_steam_candidate_research_jobs()

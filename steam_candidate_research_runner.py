@@ -134,6 +134,7 @@ def _run_social(job: dict[str, Any]) -> dict[str, Any]:
             ),
             "top_clusters": [_social_top_cluster(cluster) for cluster in clusters[:10]],
             "source_failures": raw.get("source_failures") or {},
+            "source_states": raw.get("source_states") or {},
             "error": None if available else "social_evidence_unavailable",
         }
     except Exception as exc:

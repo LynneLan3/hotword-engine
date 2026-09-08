@@ -35,6 +35,8 @@ DEFAULT_PROVIDERS = ("reddit", "steam", "youtube")
 DEFAULT_LOOKBACK_HOURS = 48
 DEFAULT_COOLDOWN_DAYS = 7
 DEFAULT_PROVIDER_TIMEOUT_SECONDS = 180
+_reddit_rate_limited = False
+_reddit_rate_limit_reason = ""
 CONTENT_STAGES = ("PRE_LAUNCH", "LAUNCH", "GROWTH", "STABLE")
 PACK_EVIDENCE_STATUSES = {"VERIFIED", "INFERENCE", "INCOMPLETE"}
 CANONICAL_INTENTS = {
@@ -1026,6 +1028,19 @@ class provider_deadline:
         return False
 
 
+def reset_daily_provider_circuit_breaker() -> None:
+    """Reset process-local provider state at the start of a daily run."""
+    global _reddit_rate_limited, _reddit_rate_limit_reason
+    _reddit_rate_limited = False
+    _reddit_rate_limit_reason = ""
+
+
+def _open_reddit_rate_limit(reason: str) -> None:
+    global _reddit_rate_limited, _reddit_rate_limit_reason
+    _reddit_rate_limited = True
+    _reddit_rate_limit_reason = reason or "reddit_http_429"
+
+
 def collect_provider_for_seed(
     provider: str,
     seed: str,
@@ -1048,25 +1063,40 @@ def collect_provider_for_seed(
     return items, len(raw_items)
 
 
-def collect_social_evidence(job: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, int], dict[str, str]]:
+def collect_social_evidence(job: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, int], dict[str, str], dict[str, str]]:
     providers = list(job.get("providers") or DEFAULT_PROVIDERS)
     appids = rr.resolve_steam_appids(str(job.get("game_name") or ""), None)
     evidence: list[dict[str, Any]] = []
     source_counts = Counter({"reddit": 0, "steam": 0, "youtube": 0})
     source_failures: dict[str, str] = {}
+    source_states: dict[str, str] = {}
     for seed in seed_terms(job):
         for provider in providers:
+            if provider == "reddit" and _reddit_rate_limited:
+                reason = _reddit_rate_limit_reason or "reddit_http_429"
+                source_failures[provider] = reason
+                source_states[provider] = "RATE_LIMITED"
+                log(f"  reddit skipped: rate-limited circuit open ({reason})")
+                continue
             try:
                 provider_evidence, count = collect_provider_for_seed(provider, seed, job, appids)
                 evidence.extend(provider_evidence)
                 source_counts[provider] += count
+            except rr.RedditRateLimitedError as exc:
+                reason = str(exc) or "reddit_http_429"
+                _open_reddit_rate_limit(reason)
+                source_failures[provider] = reason
+                source_states[provider] = "RATE_LIMITED"
+                log(f"  {provider} failed: {reason}; opening daily circuit")
             except ProviderTimeout as exc:
                 source_failures[provider] = str(exc)
+                source_states[provider] = "PROVIDER_UNAVAILABLE"
                 log(f"  {provider} failed: {exc}")
             except Exception as exc:
                 source_failures[provider] = str(exc)
+                source_states[provider] = "PROVIDER_UNAVAILABLE"
                 log(f"  {provider} failed: {exc}")
-    return ddr.dedupe_discovery_evidence(evidence), dict(source_counts), source_failures
+    return ddr.dedupe_discovery_evidence(evidence), dict(source_counts), source_failures, source_states
 
 
 def run_game_wide_social_discovery(job: dict[str, Any]) -> dict[str, Any]:
@@ -1075,7 +1105,7 @@ def run_game_wide_social_discovery(job: dict[str, Any]) -> dict[str, Any]:
     log(f"{JOB_TYPE} job={job['job_id']} game={job['game_name']!r}")
     log(f"Providers: {job['providers']}")
     log(f"Seed terms: {aliases}")
-    evidence, source_counts, source_failures = collect_social_evidence(job)
+    evidence, source_counts, source_failures, source_states = collect_social_evidence(job)
     clusters = cluster_evidence(evidence, aliases)
     answer_evidence = [item for item in (job.get("answer_evidence") or []) if isinstance(item, dict)]
     for cluster in clusters:
@@ -1124,6 +1154,7 @@ def run_game_wide_social_discovery(job: dict[str, Any]) -> dict[str, Any]:
         "run_at": now_iso(),
         "source_counts": source_counts,
         "source_failures": source_failures,
+        "source_states": source_states,
         "evidence_count": len(evidence),
         "demand_evidence_count": len(evidence),
         "answer_evidence_count": len(answer_evidence),
