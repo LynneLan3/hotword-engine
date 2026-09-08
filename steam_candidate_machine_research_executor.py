@@ -15,6 +15,7 @@ import steam_candidate_preflight_executor as preflight_executor
 import steam_candidate_recommendation as m7b
 import steam_candidate_research_job_runner as m7c
 import steam_candidate_research_runner as m7a
+import search_demand_providers as providers
 
 ROOT = Path(__file__).resolve().parent
 DEFAULT_REGISTRY_SITES = ROOT.parent / "hotword-control-center" / "registry" / "sites.yaml"
@@ -95,6 +96,35 @@ def _as_machine_fields(
     return machine_fields.build_machine_fields(social=social, preflight_result=preflight_result)
 
 
+def _attach_trends(
+    result: dict[str, Any],
+    *,
+    job: dict[str, Any],
+    root: Path,
+    trends_fn: Callable[[str], dict[str, Any]] | None,
+) -> dict[str, Any]:
+    """Add one cached paid Trends result to a paid-stage preflight result."""
+    query = _text(job.get("game_name"))
+    raw, reused = preflight._cached_probe(
+        cache_dir=root / "artifacts" / "steam-preflight",
+        app_id=_text(job.get("steam_app_id")),
+        query=query,
+        run_date=m7a.now_iso()[:10].replace("-", ""),
+        source=providers.SOURCE_SEARCHAPI_GOOGLE_TRENDS,
+        probe=lambda: (trends_fn or providers.probe_searchapi_google_trends)(query),
+    )
+    raw = raw if isinstance(raw, dict) else {"status": providers.STATUS_UNAVAILABLE, "error": "invalid_trends_result"}
+    item = raw.get("items", [{}])[0] if isinstance(raw.get("items"), list) and raw.get("items") else {}
+    result = dict(result)
+    result["trends"] = {**raw, "cache_reused": reused}
+    result["trends_result"] = _text(item.get("strength")) or "未检查"
+    result["trends_status"] = _text(raw.get("status")).upper() or providers.STATUS_UNAVAILABLE
+    result["trends_cache_reused"] = reused
+    if result["trends_status"] == providers.STATUS_UNAVAILABLE:
+        result["provider_errors"] = list(result.get("provider_errors") or []) + [_text(raw.get("error")) or "trends_provider_unavailable"]
+    return result
+
+
 def _optional_existing_site_index() -> exclusion.ExistingSiteIndex | None:
     """Load live production index when explicitly enabled for job execution.
 
@@ -157,6 +187,9 @@ def run_job(
     dry_run: bool = False,
     existing_site_index: exclusion.ExistingSiteIndex | None = None,
     paid_serp_enabled: bool = True,
+    force_paid_verification: bool = False,
+    include_trends: bool = False,
+    trends_fn: Callable[[str], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Preflight first; full M7A+M7B callback only for MANUAL_REVIEW."""
     job = _load(job_path)
@@ -199,7 +232,9 @@ def run_job(
     if preflight_path.exists():
         try:
             existing = _load(preflight_path)
-            if _text(existing.get("preflight_verdict")) in preflight.VERDICTS:
+            if _text(existing.get("preflight_verdict")) in preflight.VERDICTS and not (
+                force_paid_verification and _text(existing.get("research_stage")).upper() == "FREE_FIRST"
+            ):
                 preflight_result = existing
                 reused_preflight = True
         except (OSError, ValueError):
@@ -256,6 +291,15 @@ def run_job(
             post_fn=post_fn,
             dry_run=dry_run,
         )
+
+    if include_trends:
+        preflight_result = _attach_trends(
+            preflight_result,
+            job=job,
+            root=root,
+            trends_fn=trends_fn,
+        )
+        _write(preflight_path, preflight_result)
 
     run_research = research_fn or m7a.run_candidate_research
     result: dict[str, Any] | None = None

@@ -193,6 +193,7 @@ def build_machine_fields(
                 query_clusters.append(text)
 
     return {
+        "trends_result": _text(_as_dict(preflight_result).get("trends_result")) or "未检查",
         "social_result": social_verdict,
         "social_verdict": social_verdict,
         "social_one_liner": social_one_liner,

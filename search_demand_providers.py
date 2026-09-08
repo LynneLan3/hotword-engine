@@ -26,6 +26,7 @@ SOURCE_GOOGLE_PAA = "GOOGLE_PAA"
 SOURCE_GOOGLE_RELATED = "GOOGLE_RELATED"
 SOURCE_BING_AUTOCOMPLETE = "BING_AUTOCOMPLETE"
 SOURCE_SEARCHAPI_GOOGLE_ORGANIC = "SEARCHAPI_GOOGLE_ORGANIC"
+SOURCE_SEARCHAPI_GOOGLE_TRENDS = "SEARCHAPI_GOOGLE_TRENDS"
 
 SOURCES = (
     SOURCE_GOOGLE_AUTOCOMPLETE,
@@ -437,6 +438,23 @@ def searchapi_google_organic_url(
     )
 
 
+def searchapi_google_trends_url(
+    query: str,
+    *,
+    time: str = "today 12-m",
+    geo: str = "US",
+) -> str:
+    return SEARCHAPI_SEARCH_ENDPOINT + "?" + urllib.parse.urlencode(
+        {
+            "engine": "google_trends",
+            "data_type": "TIMESERIES",
+            "q": query,
+            "time": time,
+            "geo": geo,
+        }
+    )
+
+
 def probe_google_autocomplete(
     query: str,
     seed_terms: list[str] | None = None,
@@ -764,6 +782,63 @@ def probe_searchapi_google_organic(
         STATUS_SUPPORTED,
         query,
         items=items,
+        metadata=metadata,
+    )
+
+
+def probe_searchapi_google_trends(
+    query: str,
+    *,
+    fetch_fn: FetchFn | None = None,
+    api_key: str | None = None,
+    time: str = "today 12-m",
+    geo: str = "US",
+) -> dict[str, Any]:
+    """Fetch one paid SearchApi Google Trends time series without retries."""
+    key = api_key if api_key is not None else os.environ.get("SEARCHAPI_API_KEY")
+    url = searchapi_google_trends_url(query, time=time, geo=geo)
+    metadata = {"http_status": 0, "endpoint": url, "time": time, "geo": geo, "billing_status": "UNKNOWN"}
+    if not str(key or "").strip():
+        return provider_result(SOURCE_SEARCHAPI_GOOGLE_TRENDS, STATUS_UNAVAILABLE, query, error="missing_searchapi_api_key", metadata=metadata)
+    resp = _fetch(
+        fetch_fn,
+        url,
+        headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},
+        timeout=45,
+    )
+    metadata["http_status"] = resp["status"]
+    if resp["status"] == 0:
+        metadata["transport_error"] = _redact_searchapi_transport_error(resp.get("error"), str(key))
+        return provider_result(SOURCE_SEARCHAPI_GOOGLE_TRENDS, STATUS_UNAVAILABLE, query, error="searchapi_transport_error", metadata=metadata)
+    if not resp["ok"] or not 200 <= resp["status"] < 300:
+        return provider_result(SOURCE_SEARCHAPI_GOOGLE_TRENDS, STATUS_UNAVAILABLE, query, error="searchapi_http_error", metadata=metadata)
+    try:
+        payload = json.loads(resp["body"])
+    except (TypeError, ValueError):
+        return provider_result(SOURCE_SEARCHAPI_GOOGLE_TRENDS, STATUS_UNAVAILABLE, query, error="invalid_searchapi_json", metadata=metadata)
+    series = payload.get("interest_over_time") if isinstance(payload, dict) else None
+    averages = series.get("averages") if isinstance(series, dict) else None
+    timeline = series.get("timeline_data") if isinstance(series, dict) else None
+    average = next((int(item.get("value")) for item in averages or [] if isinstance(item, dict) and str(item.get("query")) == query and str(item.get("value", "")).isdigit()), 0)
+    values = [
+        int(value.get("extracted_value"))
+        for point in timeline or []
+        for value in (point.get("values") or [])
+        if isinstance(value, dict) and str(value.get("query", query)) == query and str(value.get("extracted_value", "")).isdigit()
+    ]
+    if not values and average:
+        values = [average]
+    midpoint = len(values) // 2
+    earlier = sum(values[:midpoint]) / len(values[:midpoint]) if midpoint else 0
+    recent = sum(values[midpoint:]) / len(values[midpoint:]) if midpoint else float(average)
+    growth = round((recent - earlier) / earlier, 4) if earlier else None
+    strength = "无" if average <= 0 else "强" if average >= 60 or (growth is not None and growth >= 0.3) else "中" if average >= 30 or (growth is not None and growth >= 0.1) else "弱"
+    metadata.update({"average": average, "recent_average": round(recent, 2), "baseline_average": round(earlier, 2), "relative_growth": growth, "timeline_points": len(values)})
+    return provider_result(
+        SOURCE_SEARCHAPI_GOOGLE_TRENDS,
+        STATUS_SUPPORTED,
+        query,
+        items=[{"kind": "trends_timeseries", "query": query, "value": average, "strength": strength}],
         metadata=metadata,
     )
 

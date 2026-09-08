@@ -149,6 +149,35 @@ class SteamCandidateMachineResearchExecutorTests(unittest.TestCase):
         self.assertEqual(artifact["research_stage"], "FREE_FIRST")
         self.assertEqual(artifact["machine_fields"]["serp_competition"], "未检查")
 
+    def test_paid_stage_attaches_cached_trends_result(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(
+            os.environ,
+            {"STEAM_CANDIDATE_RESEARCH_API_URL": "https://sheet.example/exec", "STEAM_CANDIDATE_RESEARCH_CALLBACK_TOKEN": "callback-secret"},
+        ):
+            root = Path(tmp)
+            outcome = executor.run_job(
+                self._write_job(root),
+                root=root,
+                preflight_fn=lambda _job, **kwargs: {
+                    "preflight_verdict": preflight.MANUAL_REVIEW,
+                    "preflight_reason": "PASSED_AUTOMATIC_NOISE_AND_COMPETITION_FILTERS",
+                    "autocomplete": {"status": "AVAILABLE", "guide_intent": True, "items": []},
+                    "serp": {"queries": [{"status": "SUPPORTED"}]},
+                    "checked_at": "2026-08-26T09:15:00+08:00",
+                },
+                research_fn=lambda job: {
+                    "job_id": job["job_id"], "job_type": job["job_type"], "steam_app_id": job["steam_app_id"],
+                    "game_name": job["game_name"], "manual_signals": {}, "research_status": "COMPLETED",
+                    "social": {}, "serp": {},
+                },
+                social_fn=lambda _job: {"status": "AVAILABLE", "evidence_count": 2, "top_clusters": []},
+                trends_fn=lambda _query: {"status": "SUPPORTED", "items": [{"strength": "强"}]},
+                include_trends=True,
+                force_paid_verification=True,
+                dry_run=True,
+            )
+        self.assertEqual(outcome["callback_payload"]["machine_fields"]["trends_result"], "强")
+
 
 if __name__ == "__main__":
     unittest.main()
