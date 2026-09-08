@@ -7,13 +7,14 @@ DEMAND_DISCOVERY provider path. It writes local JSON artifacts only:
   jobs/<job_id>/game_wide_social_result.json
   jobs/<job_id>/status.json
 
-No Sheet callback, no scheduler, no page creation.
+Uses the existing Research Job callback when configured; no scheduler or page creation.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import signal
 import sys
@@ -24,6 +25,7 @@ from typing import Any
 
 import demand_discovery_runner as ddr
 import research_runner as rr
+import research_job_runner as rjr
 
 ROOT = Path(__file__).resolve().parent
 
@@ -33,6 +35,19 @@ DEFAULT_PROVIDERS = ("reddit", "steam", "youtube")
 DEFAULT_LOOKBACK_HOURS = 48
 DEFAULT_COOLDOWN_DAYS = 7
 DEFAULT_PROVIDER_TIMEOUT_SECONDS = 180
+CONTENT_STAGES = ("PRE_LAUNCH", "LAUNCH", "GROWTH", "STABLE")
+GAMEPLAY_INTENTS = {
+    "BOSS",
+    "BUILD",
+    "ITEM_LOCATION",
+    "MECHANIC",
+    "PROGRESSION",
+    "PUZZLE_STUCK",
+    "QUEST_PROGRESSION",
+    "SAVE_PROGRESS",
+    "WALKTHROUGH",
+}
+PRE_LAUNCH_INTENTS = {"EDITION", "FEATURE", "PLATFORM", "RELEASE", "OFFICIAL_REFERENCE"}
 
 TASK_VERBS = {
     "how",
@@ -591,6 +606,178 @@ def decide_cluster(cluster: dict[str, Any]) -> tuple[str, str]:
     return "WATCH", "Fallback decision."
 
 
+def _bool_value(value: Any) -> bool | None:
+    if value is True or value is False:
+        return value
+    raw = str(value or "").strip().lower()
+    if raw in {"true", "yes", "1", "released", "playable", "live"}:
+        return True
+    if raw in {"false", "no", "0", "upcoming", "announced", "unreleased", "not_playable"}:
+        return False
+    return None
+
+
+def _gsc_has_demand(job: dict[str, Any], cluster: dict[str, Any] | None = None) -> bool:
+    context = job.get("gsc_context") if isinstance(job.get("gsc_context"), dict) else {}
+    if _bool_value(context.get("demand_confirmed")) is True:
+        return True
+    for key in ("impressions", "clicks", "query_count", "queries"):
+        value = context.get(key)
+        if isinstance(value, list) and value:
+            return True
+        try:
+            if float(value or 0) > 0:
+                return True
+        except (TypeError, ValueError):
+            pass
+    for row in job.get("gsc_queries") if isinstance(job.get("gsc_queries"), list) else []:
+        if not isinstance(row, dict):
+            continue
+        if any(float(row.get(k) or 0) > 0 for k in ("impressions", "clicks")):
+            return True
+    if isinstance(cluster, dict):
+        match = cluster.get("gsc_match") if isinstance(cluster.get("gsc_match"), dict) else {}
+        if str(match.get("status") or "").upper() == "PRESENT":
+            return True
+        query = match.get("query") if isinstance(match.get("query"), dict) else {}
+        return any(float(query.get(k) or 0) > 0 for k in ("impressions", "clicks"))
+    return False
+
+
+def resolve_content_stage(job: dict[str, Any], clusters: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+    """Resolve stage from explicit playability, current evidence and GSC context.
+
+    No calendar-day shortcut: absent playability evidence is deliberately safe.
+    """
+    facts = job.get("official_facts") if isinstance(job.get("official_facts"), dict) else {}
+    playability = _bool_value(
+        job.get("is_playable")
+        if job.get("is_playable") is not None
+        else facts.get("is_playable", job.get("playability"))
+    )
+    release_state = str(
+        job.get("release_state") or facts.get("release_state") or job.get("release_status") or ""
+    ).strip().upper().replace("-", "_")
+    launch_signal = _bool_value(job.get("launch_signal", facts.get("launch_signal")))
+    launch_window = _bool_value(job.get("launch_window", facts.get("launch_window")))
+    lifecycle = str(job.get("site_lifecycle") or job.get("lifecycle") or "").strip().upper()
+    clusters = clusters or []
+    external_demand = any(int(c.get("evidence_count") or 0) > 0 for c in clusters)
+    gsc_demand = _gsc_has_demand(job)
+
+    if playability is False or release_state in {"PRE_RELEASE", "UPCOMING", "ANNOUNCED", "UNRELEASED"}:
+        return {
+            "content_stage": "PRE_LAUNCH",
+            "reason": "Official or playability facts show the game is not formally playable yet.",
+            "evidence": {"playability": playability, "release_state": release_state, "source": "official_facts"},
+        }
+    if playability is not True:
+        return {
+            "content_stage": "PRE_LAUNCH",
+            "reason": "Playability is not verified; gameplay intent stays blocked until an official/playable fact is supplied.",
+            "evidence": {"playability": playability, "release_state": release_state, "source": "missing_playability_fact"},
+        }
+    if launch_signal is True or launch_window is True or release_state in {"LAUNCH", "RELEASED_FIRST_WAVE"}:
+        return {
+            "content_stage": "LAUNCH",
+            "reason": "Playable fact plus an explicit current launch/first-wave signal.",
+            "evidence": {"playability": playability, "launch_signal": launch_signal, "launch_window": launch_window, "release_state": release_state},
+        }
+    if gsc_demand and external_demand:
+        return {
+            "content_stage": "GROWTH",
+            "reason": "Real GSC demand and current external player demand support expansion or a distinct intent.",
+            "evidence": {"playability": playability, "gsc_demand": gsc_demand, "external_demand": external_demand},
+        }
+    return {
+        "content_stage": "STABLE",
+        "reason": "Playable fact is present without a current launch or combined expansion signal; route maintenance and long-tail work.",
+        "evidence": {"playability": playability, "site_lifecycle": lifecycle, "gsc_demand": gsc_demand, "external_demand": external_demand},
+    }
+
+
+def _intent_type(cluster: dict[str, Any]) -> str:
+    family = str(cluster.get("intent_family") or "").upper()
+    mapped = {
+        "LOCATION": "ITEM_LOCATION",
+        "PROGRESSION": "QUEST_PROGRESSION",
+        "SAVE_PROGRESS": "SAVE_PROGRESS",
+        "BUG": "MECHANIC",
+    }.get(family)
+    if mapped:
+        return mapped
+    if family in GAMEPLAY_INTENTS or family in PRE_LAUNCH_INTENTS:
+        return family
+    return "MECHANIC"
+
+
+def build_content_routing_receipt(job: dict[str, Any], cluster: dict[str, Any], stage: dict[str, Any]) -> dict[str, Any]:
+    content_stage = stage["content_stage"]
+    intent = _intent_type(cluster)
+    decision = str(cluster.get("decision") or "WATCH").upper()
+    evidence_count = int(cluster.get("evidence_count") or 0)
+    source_families = set(cluster.get("source_families") or [])
+    official = bool(cluster.get("official_evidence")) or bool(
+        (job.get("official_facts") or {}).get("verified") if isinstance(job.get("official_facts"), dict) else False
+    )
+    gap = ""
+    evidence_pass = False
+    if content_stage == "PRE_LAUNCH":
+        evidence_pass = intent not in GAMEPLAY_INTENTS and official and evidence_count > 0
+        if intent in GAMEPLAY_INTENTS:
+            gap = "PRE_LAUNCH cannot release an unverified gameplay guide; wait for playable evidence."
+        elif not evidence_pass:
+            gap = "Need an official release/platform/edition or public-feature source."
+    elif content_stage == "LAUNCH":
+        evidence_pass = evidence_count >= 2 and bool(source_families)
+        if not evidence_pass:
+            gap = "Need at least two current evidence items for the launch player problem."
+    elif content_stage == "GROWTH":
+        evidence_pass = _gsc_has_demand(job, cluster) and evidence_count > 0
+        if not evidence_pass:
+            gap = "Need real GSC query/impression evidence plus current external demand."
+    else:
+        freshness = job.get("gsc_context") if isinstance(job.get("gsc_context"), dict) else {}
+        maintenance = any(freshness.get(k) for k in ("stale_answer", "freshness_signal", "ctr_signal", "long_tail"))
+        evidence_pass = (_gsc_has_demand(job, cluster) or maintenance) and evidence_count > 0
+        if not evidence_pass:
+            gap = "Need GSC maintenance/freshness/CTR/long-tail context and supporting evidence."
+
+    media = str(cluster.get("media_state") or job.get("media_state") or "MISSING").strip().upper()
+    publish_state = "READY_FOR_WRITER" if evidence_pass else "RESEARCH_REQUIRED"
+    if decision == "WATCH":
+        publish_state = "RESEARCH_REQUIRED"
+        gap = gap or "WATCH is not implementation-eligible; keep the scope under observation."
+    article_class = {
+        "PRE_LAUNCH": "OFFICIAL_REFERENCE",
+        "LAUNCH": "PROBLEM_SOLVING_GUIDE",
+        "GROWTH": "EXPANSION_GUIDE",
+        "STABLE": "MAINTENANCE_REFRESH",
+    }[content_stage]
+    reason = stage["reason"]
+    if gap:
+        reason += " " + gap
+    elif media in {"PARTIAL", "MISSING"}:
+        reason += " Reliable answer evidence passes; media is " + media + " and does not block Writer readiness."
+    primary = "CREATE_NEW_PAGE" if decision == "NEW" else "EXPAND_EXISTING" if decision == "EXPAND" else "WATCH"
+    decision_id = f"content-decision-{job.get('job_id')}-{cluster.get('topic_key') or 'scope'}"
+    return {
+        "site_lifecycle": str(job.get("site_lifecycle") or job.get("lifecycle") or "").strip(),
+        "content_stage": content_stage,
+        "intent_type": intent,
+        "article_class": article_class,
+        "evidence_requirement": "PASS" if evidence_pass else "RESEARCH_REQUIRED",
+        "media_requirement": media,
+        "writer_mode": "SHARED_ARTICLE_WRITER" if publish_state == "READY_FOR_WRITER" else "BLOCKED",
+        "publish_state": publish_state,
+        "routing_reason": reason,
+        "decision_id": decision_id,
+        "primary_decision": primary,
+        "confidence": "HIGH" if evidence_pass and decision in {"NEW", "EXPAND"} else "LOW",
+        "page_path": str((cluster.get("existing_page_match") or {}).get("page", {}).get("url") or "").strip(),
+    }
+
+
 class ProviderTimeout(BaseException):
     pass
 
@@ -678,6 +865,14 @@ def run_game_wide_social_discovery(job: dict[str, Any]) -> dict[str, Any]:
         cluster["decision"] = decision
         cluster["reason"] = reason
 
+    stage = resolve_content_stage(job, clusters)
+    routing_receipts = []
+    for cluster in clusters:
+        if str(cluster.get("decision") or "").upper() in {"NEW", "EXPAND", "WATCH"}:
+            receipt = build_content_routing_receipt(job, cluster, stage)
+            cluster["content_routing"] = receipt
+            routing_receipts.append(receipt)
+
     decision_counts = {d: 0 for d in DECISIONS}
     for c in clusters:
         decision_counts[str(c.get("decision") or "WATCH")] += 1
@@ -694,8 +889,35 @@ def run_game_wide_social_discovery(job: dict[str, Any]) -> dict[str, Any]:
         "source_counts": source_counts,
         "source_failures": source_failures,
         "evidence_count": len(evidence),
+        "site_lifecycle": job.get("site_lifecycle") or job.get("lifecycle") or "",
+        "content_stage": stage["content_stage"],
+        "content_stage_reason": stage["reason"],
+        "content_stage_evidence": stage["evidence"],
         "clusters": clusters,
+        "content_routing_receipts": routing_receipts,
+        "content_decisions": routing_receipts,
         "decision_counts": decision_counts,
+    }
+
+
+def build_game_wide_callback_body(result: dict[str, Any], *, result_path: str = "") -> dict[str, Any]:
+    receipts = result.get("content_routing_receipts") if isinstance(result.get("content_routing_receipts"), list) else []
+    return {
+        "job_id": result.get("job_id"),
+        "job_type": JOB_TYPE,
+        "research_type": "DEMAND_DISCOVERY",
+        "execution_status": "COMPLETED",
+        "discovery_scope": {"scope": "GAME_WIDE"},
+        "evidence_count": int(result.get("evidence_count") or 0),
+        "cluster_count": len(result.get("clusters") or []),
+        "decision_counts": result.get("decision_counts") or {},
+        "result_path": result_path,
+        "site_lifecycle": result.get("site_lifecycle") or "",
+        "content_stage": result.get("content_stage") or "",
+        "content_stage_reason": result.get("content_stage_reason") or "",
+        "content_stage_evidence": result.get("content_stage_evidence") or {},
+        "content_routing_receipts": receipts,
+        "content_decisions": receipts,
     }
 
 
@@ -712,6 +934,14 @@ def run_job(job_path: Path) -> dict[str, Any]:
     try:
         result = run_game_wide_social_discovery(job)
         write_json(result_path, result)
+        callback_ok = None
+        if os.environ.get("RESEARCH_CALLBACK_URL"):
+            callback_ok = rjr.post_callback_body(
+                build_game_wide_callback_body(
+                    result,
+                    result_path=f"jobs/{job_id}/game_wide_social_result.json",
+                )
+            )
         write_json(
             status_path,
             {
@@ -723,10 +953,11 @@ def run_job(job_path: Path) -> dict[str, Any]:
                 "evidence_count": result.get("evidence_count", 0),
                 "cluster_count": len(result.get("clusters") or []),
                 "decision_counts": result.get("decision_counts") or {},
+                "callback_ok": callback_ok,
             },
         )
         print_summary(result)
-        return {"ok": True, "status": "COMPLETED", "job_id": job_id, "result": result}
+        return {"ok": callback_ok is not False, "status": "COMPLETED", "job_id": job_id, "result": result, "callback_ok": callback_ok}
     except Exception as exc:
         write_json(
             status_path,
