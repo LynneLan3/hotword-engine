@@ -51,6 +51,7 @@ jobs:
         with:
           repository: LynneLan3/hotword-control-center
           path: .deps/hotword-control-center
+          token: ${{ secrets.HOTWORD_CONTROL_CENTER_READ_TOKEN }}
           sparse-checkout: |
             registry
           sparse-checkout-cone-mode: true
