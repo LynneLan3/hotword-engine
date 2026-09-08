@@ -156,6 +156,7 @@ def run_job(
     post_fn: Callable[[str, dict[str, Any]], Any] | None = None,
     dry_run: bool = False,
     existing_site_index: exclusion.ExistingSiteIndex | None = None,
+    paid_serp_enabled: bool = True,
 ) -> dict[str, Any]:
     """Preflight first; full M7A+M7B callback only for MANUAL_REVIEW."""
     job = _load(job_path)
@@ -223,6 +224,7 @@ def run_job(
         preflight_result = preflight_fn(
             preflight_job,
             cache_dir=root / "artifacts" / "steam-preflight",
+            paid_serp_enabled=paid_serp_enabled,
         )
         if not isinstance(preflight_result, dict):
             preflight_result = {
@@ -345,6 +347,89 @@ def run_job(
         "dry_run": False,
         "sent": True,
         "recommendation": recommendation.get("recommendation"),
+    }
+
+
+def run_free_first_job(
+    job_path: Path,
+    *,
+    root: Path = ROOT,
+    preflight_fn: Callable[..., dict[str, Any]] = preflight.run_preflight,
+    social_fn: Callable[[dict[str, Any]], dict[str, Any]] = m7a.run_candidate_social,
+    existing_site_index: exclusion.ExistingSiteIndex | None = None,
+) -> dict[str, Any]:
+    """Persist free/existing/cache-first signals without paid or callback work."""
+    job = _load(job_path)
+    job_id = _text(job.get("job_id"))
+    if not job_id:
+        raise ValueError("machine research job missing job_id")
+    index = existing_site_index if existing_site_index is not None else _optional_existing_site_index()
+    if index is not None:
+        evaluation = exclusion.evaluate_existing_site(job, index)
+        if evaluation.get("existingSite"):
+            return {
+                "ok": True,
+                "execution_status": "SKIPPED_EXISTING_SITE",
+                "callback_ok": None,
+                "existing_site": evaluation,
+                "paid_serp_enabled": False,
+                "paid_verification_status": "NOT_APPLICABLE",
+                "sent": False,
+            }
+
+    job_dir = root / "jobs" / job_id
+    preflight_path = job_dir / "steam_candidate_preflight.json"
+    research_path = job_dir / "steam_candidate_research_result.json"
+    social = social_fn(job)
+    if not isinstance(social, dict):
+        social = {"status": "UNAVAILABLE", "error": "invalid_social_result", "evidence_count": 0, "top_clusters": []}
+    preflight_job = dict(job)
+    preflight_job["social_supporting_evidence"] = {
+        "status": _text(social.get("status")).upper(),
+        "evidence_count": social.get("evidence_count", 0),
+        "top_clusters": social.get("top_clusters") or [],
+    }
+    result = preflight_fn(
+        preflight_job,
+        cache_dir=root / "artifacts" / "steam-preflight",
+        paid_serp_enabled=False,
+    )
+    if not isinstance(result, dict):
+        result = {"preflight_verdict": preflight.PREFLIGHT_ERROR, "preflight_reason": "invalid_preflight_result"}
+    result = dict(result)
+    result.update({
+        "research_stage": "FREE_FIRST",
+        "paid_serp_enabled": False,
+        "paid_verification_status": "DEFERRED",
+        "paid_provider_calls": 0,
+    })
+    if social.get("error") and result.get("preflight_verdict") == preflight.PREFLIGHT_ERROR:
+        result["provider_errors"] = list(result.get("provider_errors") or []) + [f"social:{social['error']}"]
+    machine = machine_fields.build_machine_fields(social=social, preflight_result=result)
+    artifact = {
+        "job_id": job.get("job_id"),
+        "job_type": job.get("job_type"),
+        "steam_app_id": job.get("steam_app_id"),
+        "game_name": job.get("game_name"),
+        "research_status": "FREE_FIRST_COMPLETE" if result.get("preflight_verdict") != preflight.PREFLIGHT_ERROR else "FAILED",
+        "research_stage": "FREE_FIRST",
+        "social": social,
+        "preflight": result,
+        "machine_fields": machine,
+        "generated_at": result.get("checked_at") or m7a.now_iso(),
+    }
+    _write(preflight_path, result)
+    _write(research_path, artifact)
+    return {
+        "ok": result.get("preflight_verdict") != preflight.PREFLIGHT_ERROR,
+        "execution_status": "FREE_RESEARCH_COMPLETED" if result.get("preflight_verdict") != preflight.PREFLIGHT_ERROR else "FAILED",
+        "callback_ok": None,
+        "callback_payload": {"machine_fields": machine, "preflight_verdict": result.get("preflight_verdict")},
+        "preflight_verdict": result.get("preflight_verdict"),
+        "paid_serp_enabled": False,
+        "paid_verification_status": "DEFERRED",
+        "paid_provider_calls": 0,
+        "sent": False,
     }
 
 

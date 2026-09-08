@@ -140,6 +140,8 @@ def compute_social_verdict(social: dict[str, Any]) -> tuple[str, str]:
 def compute_serp_competition(preflight_result: dict[str, Any] | None) -> str:
     preflight = _as_dict(preflight_result)
     serp = _as_dict(preflight.get("serp"))
+    if "queries" in serp and not serp.get("queries"):
+        return "未检查"
     dedicated = len(serp.get("dedicated_guide_domains") or [])
     densities = [
         _text(serp.get("brand_serp_guide_density")).upper(),

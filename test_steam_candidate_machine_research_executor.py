@@ -127,6 +127,28 @@ class SteamCandidateMachineResearchExecutorTests(unittest.TestCase):
         self.assertEqual(sent[0]["preflight_verdict"], "WATCH")
         self.assertNotIn("recommendation", sent[0])
 
+    def test_free_first_persists_machine_artifact_without_callback_or_serp(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = self._write_job(root)
+            outcome = executor.run_free_first_job(
+                path,
+                root=root,
+                social_fn=lambda _job: {"status": "AVAILABLE", "evidence_count": 2, "top_clusters": []},
+                preflight_fn=lambda _job, **kwargs: {
+                    "preflight_verdict": preflight.MANUAL_REVIEW,
+                    "preflight_reason": "PASSED_AUTOMATIC_NOISE_AND_COMPETITION_FILTERS",
+                    "autocomplete": {"status": "AVAILABLE", "guide_intent": True, "items": []},
+                    "serp": {"queries": []},
+                    "checked_at": "2026-08-26T09:15:00+08:00",
+                },
+            )
+            artifact = json.loads((root / "jobs" / _job()["job_id"] / "steam_candidate_research_result.json").read_text())
+        self.assertEqual(outcome["execution_status"], "FREE_RESEARCH_COMPLETED")
+        self.assertEqual(outcome["paid_provider_calls"], 0)
+        self.assertEqual(artifact["research_stage"], "FREE_FIRST")
+        self.assertEqual(artifact["machine_fields"]["serp_competition"], "未检查")
+
 
 if __name__ == "__main__":
     unittest.main()

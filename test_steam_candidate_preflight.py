@@ -280,6 +280,7 @@ class PreflightRegressionTests(unittest.TestCase):
             _job("BOMBANANA!", release_stage="Upcoming", release_date="2026-09-02"),
             autocomplete_fn=_autocomplete("BOMBANANA!", guide=False),
             serp_fn=_serp("BOMBANANA!", []),
+            now=date(2026, 8, 25),
         )
         self.assertEqual(result["preflight_verdict"], WATCH)
         self.assertEqual(result["next_review_date"], "2026-09-03")
@@ -305,6 +306,25 @@ class PreflightRegressionTests(unittest.TestCase):
         self.assertEqual(first["searchapi_queries_reused"], 0)
         self.assertEqual(second["searchapi_queries_reused"], 3)
         self.assertEqual(len([call for call in calls if call[0] == "serp"]), 3)
+
+    def test_free_first_never_calls_serp(self):
+        calls = []
+
+        def forbidden(_query):
+            calls.append(True)
+            raise AssertionError("free-first must not call paid SERP")
+
+        result = run_preflight(
+            _job("Free First Candidate"),
+            autocomplete_fn=_autocomplete("Free First Candidate"),
+            serp_fn=forbidden,
+            paid_serp_enabled=False,
+            now=date(2026, 8, 25),
+        )
+        self.assertEqual(result["paid_verification_status"], "DEFERRED")
+        self.assertFalse(result["paid_serp_enabled"])
+        self.assertEqual(result["searchapi_queries_used"], 0)
+        self.assertEqual(calls, [])
 
     def test_provider_failure_is_not_reject(self):
         def failed(*_args):

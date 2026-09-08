@@ -589,8 +589,14 @@ def run_preflight(
     cache_dir: Path | None = None,
     now: date | datetime | None = None,
     max_serp_queries: int = DEFAULT_MAX_SERP_QUERIES,
+    paid_serp_enabled: bool = True,
 ) -> dict[str, Any]:
-    """Run preflight with bounded, same-day provider/cache semantics."""
+    """Run preflight with bounded, same-day provider/cache semantics.
+
+    ``paid_serp_enabled=False`` is the G040 free-first boundary. It preserves
+    the autocomplete/social verdict path while making a paid SERP call
+    impossible for that invocation.
+    """
     if not isinstance(job, dict):
         raise ValueError("Steam preflight job must be an object")
     game_name = _text(job.get("game_name"))
@@ -653,28 +659,40 @@ def run_preflight(
             result["cache_reused"] = reused
             autocomplete_runs.append(result)
 
-    query_names = [game_name, f"{game_name} guide", f"{game_name} wiki"][: max(1, min(max_serp_queries, DEFAULT_MAX_SERP_QUERIES))]
     serp_queries: list[dict[str, Any]] = []
-    for index, query in enumerate(query_names):
-        if index > 0 and serp_queries:
-            first = serp_queries[0]
-            if len(first.get("dedicated_guide_domains", [])) >= DEDICATED_DOMAIN_REJECT_MIN or first.get("guide_density") == "HIGH":
-                break
-        raw, reused = _cached_probe(
-            cache_dir=cache_dir,
-            app_id=_text(job.get("steam_app_id")),
-            query=query,
-            run_date=run_date,
-            source="SEARCHAPI_GOOGLE_ORGANIC",
-            probe=(lambda query=query: serp_fn(query) if serp_fn else _default_serp(query, game_name, provider_fetch_fn)),
-        )
-        summary = summarize_serp_query(game_name, query, raw)
-        summary["cache_reused"] = reused
-        raw_items = raw.get("items") if isinstance(raw, dict) else []
-        summary["_items"] = raw_items if isinstance(raw_items, list) else []
-        serp_queries.append(summary)
+    if paid_serp_enabled:
+        query_names = [game_name, f"{game_name} guide", f"{game_name} wiki"][: max(1, min(max_serp_queries, DEFAULT_MAX_SERP_QUERIES))]
+        for index, query in enumerate(query_names):
+            if index > 0 and serp_queries:
+                first = serp_queries[0]
+                if len(first.get("dedicated_guide_domains", [])) >= DEDICATED_DOMAIN_REJECT_MIN or first.get("guide_density") == "HIGH":
+                    break
+            raw, reused = _cached_probe(
+                cache_dir=cache_dir,
+                app_id=_text(job.get("steam_app_id")),
+                query=query,
+                run_date=run_date,
+                source="SEARCHAPI_GOOGLE_ORGANIC",
+                probe=(lambda query=query: serp_fn(query) if serp_fn else _default_serp(query, game_name, provider_fetch_fn)),
+            )
+            summary = summarize_serp_query(game_name, query, raw)
+            summary["cache_reused"] = reused
+            raw_items = raw.get("items") if isinstance(raw, dict) else []
+            summary["_items"] = raw_items if isinstance(raw_items, list) else []
+            serp_queries.append(summary)
 
-    return evaluate_preflight(job, autocomplete_runs=autocomplete_runs, serp_queries=serp_queries)
+    checked_at = now.isoformat(timespec="seconds") if isinstance(now, datetime) else (
+        f"{now.isoformat()}T00:00:00" if isinstance(now, date) else None
+    )
+    result = evaluate_preflight(
+        job,
+        autocomplete_runs=autocomplete_runs,
+        serp_queries=serp_queries,
+        checked_at=checked_at,
+    )
+    result["paid_serp_enabled"] = bool(paid_serp_enabled)
+    result["paid_verification_status"] = "COMPLETED" if paid_serp_enabled else "DEFERRED"
+    return result
 
 
 def build_preflight_result(*args: Any, **kwargs: Any) -> dict[str, Any]:
