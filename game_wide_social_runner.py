@@ -36,6 +36,19 @@ DEFAULT_LOOKBACK_HOURS = 48
 DEFAULT_COOLDOWN_DAYS = 7
 DEFAULT_PROVIDER_TIMEOUT_SECONDS = 180
 CONTENT_STAGES = ("PRE_LAUNCH", "LAUNCH", "GROWTH", "STABLE")
+PACK_EVIDENCE_STATUSES = {"VERIFIED", "INFERENCE", "INCOMPLETE"}
+CANONICAL_INTENTS = {
+    "NEWS_UPDATE",
+    "PUZZLE_STUCK",
+    "QUEST_PROGRESSION",
+    "ITEM_LOCATION",
+    "BOSS",
+    "MECHANIC",
+    "BUILD",
+    "WALKTHROUGH",
+    "DATABASE",
+    "HUB",
+}
 GAMEPLAY_INTENTS = {
     "BOSS",
     "BUILD",
@@ -169,7 +182,7 @@ def validate_job(job: dict[str, Any]) -> dict[str, Any]:
     aliases = job.get("aliases") or []
     if not isinstance(aliases, list):
         raise ValueError("aliases must be array")
-    for field in ("gsc_queries", "existing_pages", "recent_interventions"):
+    for field in ("gsc_queries", "existing_pages", "recent_interventions", "answer_evidence"):
         value = job.get(field)
         if value is None:
             job[field] = []
@@ -466,6 +479,187 @@ def cluster_evidence(evidence: list[dict[str, Any]], aliases: list[str]) -> list
     return out
 
 
+def _answer_evidence_for_cluster(cluster: dict[str, Any], answer_evidence: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not answer_evidence:
+        return []
+    topic_key = str(cluster.get("topic_key") or "").strip()
+    topic_tokens = text_tokens(str(cluster.get("topic") or ""))
+    matched = []
+    for item in answer_evidence:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("cluster_id") or item.get("topic_key") or "").strip() in {topic_key, str(cluster.get("cluster_id") or "")}:
+            matched.append(item)
+            continue
+        item_tokens = text_tokens(evidence_text(item))
+        if topic_tokens and topic_tokens & item_tokens:
+            matched.append(item)
+    if matched:
+        return matched
+    return answer_evidence if len(answer_evidence) == 1 else []
+
+
+def _pack_slug(value: Any) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", str(value or "").strip().lower()).strip("-")
+    return slug or "scope"
+
+
+def _pack_capture_time(item: dict[str, Any], fallback: str) -> str:
+    raw = str(item.get("captured_at") or item.get("published_at") or "").strip()
+    if re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$", raw):
+        return raw
+    return fallback
+
+
+def build_research_pack(job: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    """Emit the portable, G017-compatible handoff from the GAME_WIDE result."""
+    generated_at = now_iso()
+    raw_items: list[tuple[str, dict[str, Any]]] = []
+    for item in result.get("demand_evidence") or []:
+        if isinstance(item, dict):
+            raw_items.append(("DEMAND", item))
+    for item in result.get("answer_evidence") or []:
+        if isinstance(item, dict):
+            raw_items.append(("ANSWER", item))
+
+    evidence: list[dict[str, Any]] = []
+    evidence_ids: list[str] = []
+    for index, (kind, item) in enumerate(raw_items, start=1):
+        evidence_id = str(item.get("evidence_id") or f"{kind.lower()}-{index:03d}").strip()
+        if evidence_id in evidence_ids:
+            evidence_id = f"{kind.lower()}-{index:03d}"
+        evidence_ids.append(evidence_id)
+        source_ref = str(item.get("url") or item.get("source_ref") or f"job:{job.get('job_id')}:{kind.lower()}:{index}").strip()
+        summary = str(
+            item.get("summary")
+            or item.get("text")
+            or item.get("excerpt")
+            or item.get("signal_text")
+            or item.get("player_question")
+            or "No summary supplied."
+        ).strip()
+        status = str(item.get("status") or ("INCOMPLETE" if kind == "DEMAND" else "INFERENCE")).strip().upper()
+        if status not in PACK_EVIDENCE_STATUSES:
+            status = "INCOMPLETE" if status in {"UNCONFIRMED", "UNKNOWN"} else "INFERENCE"
+        evidence.append(
+            {
+                "evidence_id": evidence_id,
+                "evidence_kind": kind,
+                "source_type": str(item.get("source_type") or item.get("source_family") or item.get("provider") or "unknown").strip(),
+                "source_ref": source_ref,
+                "query_or_topic": str(item.get("query_or_topic") or item.get("player_question") or item.get("signal_text") or job.get("game_name") or "GAME_WIDE").strip(),
+                "summary": summary,
+                "captured_at": _pack_capture_time(item, generated_at),
+                "status": status,
+                "limitations": "Demand evidence establishes player need; it is not an answer fact." if kind == "DEMAND" else item.get("limitations"),
+            }
+        )
+    if not evidence:
+        evidence_ids.append("incomplete-001")
+        evidence.append(
+            {
+                "evidence_id": "incomplete-001",
+                "evidence_kind": "DEMAND",
+                "source_type": "GAME_WIDE_SCHEDULER",
+                "source_ref": f"job:{job.get('job_id')}",
+                "query_or_topic": str(job.get("game_name") or "GAME_WIDE"),
+                "summary": "No provider evidence was returned; research remains incomplete.",
+                "captured_at": generated_at,
+                "status": "INCOMPLETE",
+                "limitations": "No demand or answer evidence was available.",
+            }
+        )
+
+    first_evidence = evidence_ids[:1]
+    clusters = result.get("clusters") if isinstance(result.get("clusters"), list) else []
+    page_plan = []
+    intent_map = []
+    guide_topics = []
+    popular_questions = []
+    primary_tasks = []
+    for cluster in clusters:
+        if not isinstance(cluster, dict):
+            continue
+        refs = []
+        cluster_evidence = cluster.get("demand_evidence") or cluster.get("evidence") or []
+        for item in cluster_evidence + (cluster.get("answer_evidence") or []):
+            if isinstance(item, dict):
+                ref = str(item.get("evidence_id") or "").strip()
+                if ref in evidence_ids and ref not in refs:
+                    refs.append(ref)
+        refs = refs or first_evidence
+        questions = cluster.get("representative_questions") if isinstance(cluster.get("representative_questions"), list) else []
+        topic = str(cluster.get("topic") or (questions[0] if questions else "") or "GAME_WIDE demand").strip()
+        decision = str(cluster.get("decision") or "WATCH").upper()
+        receipt = cluster.get("content_routing") if isinstance(cluster.get("content_routing"), dict) else {}
+        recommendation = "INCLUDE" if decision in {"NEW", "EXPAND"} and receipt.get("publish_state") == "READY_FOR_WRITER" else "CONDITIONAL" if decision != "IGNORE" else "OMIT"
+        intent = str(receipt.get("intent_type") or "MECHANIC")
+        intent_map.append({"intent_id": str(cluster.get("cluster_id") or _pack_slug(topic)), "query_cluster": [topic], "primary_task": intent, "requiredAnswers": [topic], "evidence_refs": refs})
+        page_plan.append({"page_id": _pack_slug(f"{job.get('job_id')}-{cluster.get('topic_key') or topic}"), "requiredAnswers": [topic], "evidence_refs": refs, "recommendation": recommendation, "content_routing": receipt})
+        guide_topics.append({"topic_id": _pack_slug(topic), "title": topic, "evidence_refs": refs, "status": "VERIFIED" if receipt.get("publish_state") == "READY_FOR_WRITER" else "INCOMPLETE"})
+        for question in cluster.get("representative_questions") or [topic]:
+            popular_questions.append({"question": str(question), "evidence_refs": refs, "status": "VERIFIED" if cluster.get("answer_evidence_count", 0) else "INCOMPLETE"})
+        primary_tasks.append({"task": intent, "evidence_refs": refs, "status": "VERIFIED" if cluster.get("answer_evidence_count", 0) else "INCOMPLETE"})
+
+    aliases = []
+    for alias in job.get("aliases") or []:
+        aliases.append({"alias": str(alias), "status": "INFERENCE", "evidence_refs": first_evidence})
+    official_facts = job.get("official_facts") if isinstance(job.get("official_facts"), dict) else {}
+    game_facts = []
+    for key, value in official_facts.items():
+        if key == "verified" or value in (None, ""):
+            continue
+        game_facts.append({"fact_id": f"fact-{_pack_slug(key)}", "claim": key, "value": str(value), "certainty": "VERIFIED" if official_facts.get("verified") else "PARTIAL", "evidence_refs": first_evidence})
+    source_references = []
+    seen_sources: set[str] = set()
+    for item in evidence:
+        ref = item["source_ref"]
+        if ref in seen_sources:
+            continue
+        seen_sources.add(ref)
+        source_references.append({"source_ref": ref, "source_type": item["source_type"], "title": item["query_or_topic"], "captured_at": item["captured_at"]})
+    top_cluster = clusters[0] if clusters and isinstance(clusters[0], dict) else {}
+    query = str(top_cluster.get("topic") or job.get("game_name") or "GAME_WIDE demand").strip()
+    research_status = "COMPLETE" if result.get("answer_evidence_count", 0) and all(
+        str((c.get("content_routing") or {}).get("publish_state") or "RESEARCH_REQUIRED") == "READY_FOR_WRITER"
+        for c in clusters if isinstance(c, dict) and str(c.get("decision") or "WATCH").upper() in {"NEW", "EXPAND"}
+    ) else "INCOMPLETE"
+    pack_ref = f"jobs/{job.get('job_id')}/research_pack.json"
+    return {
+        "schemaVersion": "hotword-research-pack-v1",
+        "researchVersion": "1",
+        "promptVersion": "game-site-research-v1",
+        "generatedAt": generated_at,
+        "schema_version": "hotword-research-package-v1",
+        "package_type": "INITIAL",
+        "research_package_id": f"rp-{_pack_slug(job.get('job_id'))}",
+        "target": {"game_name": str(job.get("game_name") or ""), "canonical_site_id": job.get("site_id"), "decision_id": (top_cluster.get("content_routing") or {}).get("decision_id")},
+        "research_context": {"market": "US", "language": "en", "captured_at": generated_at, "scope": "GAME_WIDE", "freshness_policy": "Recheck current facts before preview or publish."},
+        "research_status": research_status,
+        "game_facts": game_facts,
+        "search_evidence": evidence,
+        "aliases": aliases,
+        "intent_map": intent_map,
+        "page_plan": page_plan,
+        "guide_topics": guide_topics,
+        "popular_questions": popular_questions,
+        "assets": [],
+        "videos": [],
+        "source_references": source_references,
+        "freshness": {"status": "FRESH" if result.get("demand_evidence_count", 0) else "INCOMPLETE", "policy": "Recheck current facts before preview or publish."},
+        "provenance": {"produced_by": "Codex Web Research", "artifact_ref": pack_ref, "created_at": generated_at},
+        "page": {"id": f"game-wide-{_pack_slug(job.get('job_id'))}", "title": f"{job.get('game_name')} GAME_WIDE research", "href": str((top_cluster.get("content_routing") or {}).get("page_path") or ""), "topic": query},
+        "query": query,
+        "player_problem": str(top_cluster.get("representative_question") or query),
+        "primary_task_signals": primary_tasks,
+        "demand_evidence": result.get("demand_evidence") or [],
+        "answer_evidence": result.get("answer_evidence") or [],
+        "content_routing_receipts": result.get("content_routing_receipts") or [],
+        "implementation_handoff": {"mode": "implementation-only", "research_pack_ref": pack_ref, "forbid_external_research": True, "instruction": "Consume this Research Pack and its Content Routing receipts; use the existing Writer/content pipeline. Return any new evidence gap to the Research Agent."},
+        "excluded_scopes": ["WATCH", "RESEARCH_REQUIRED"],
+    }
+
+
 def match_gsc(cluster: dict[str, Any], gsc_queries: list[dict[str, Any]], aliases: list[str]) -> dict[str, Any]:
     cluster_tokens = text_tokens(cluster.get("topic") or "", aliases=aliases)
     best: dict[str, Any] | None = None
@@ -698,6 +892,8 @@ def resolve_content_stage(job: dict[str, Any], clusters: list[dict[str, Any]] | 
 
 def _intent_type(cluster: dict[str, Any]) -> str:
     family = str(cluster.get("intent_family") or "").upper()
+    if family in PRE_LAUNCH_INTENTS:
+        return "NEWS_UPDATE"
     mapped = {
         "LOCATION": "ITEM_LOCATION",
         "PROGRESSION": "QUEST_PROGRESSION",
@@ -707,39 +903,69 @@ def _intent_type(cluster: dict[str, Any]) -> str:
     if mapped:
         return mapped
     if family in GAMEPLAY_INTENTS or family in PRE_LAUNCH_INTENTS:
-        return family
-    return "MECHANIC"
+        value = family
+    else:
+        value = "MECHANIC"
+    if value in {"PROGRESSION", "QUEST_PROGRESSION"}:
+        return "QUEST_PROGRESSION"
+    if value == "LOCATION":
+        return "ITEM_LOCATION"
+    return value if value in CANONICAL_INTENTS else "MECHANIC"
+
+
+def _canonical_article_class(content_stage: str, intent: str, decision: str) -> str:
+    if content_stage == "PRE_LAUNCH":
+        return "FAST_VERIFIED"
+    if intent in {"PUZZLE_STUCK", "QUEST_PROGRESSION", "ITEM_LOCATION", "BOSS", "WALKTHROUGH"}:
+        return "PREMIUM_PROBLEM_SOLVING"
+    if intent in {"BUILD", "MECHANIC"}:
+        return "DEEP_GUIDE"
+    if intent in {"DATABASE", "HUB"}:
+        return "REFERENCE_DATABASE" if intent == "DATABASE" else "HUB"
+    return "UPDATE" if decision == "EXPAND" or content_stage == "STABLE" else "FAST_VERIFIED"
+
+
+def _evidence_count(cluster: dict[str, Any], field: str, fallback: int) -> int:
+    value = cluster.get(field)
+    if value is None:
+        return fallback
+    try:
+        return max(0, int(value or 0))
+    except (TypeError, ValueError):
+        return 0
 
 
 def build_content_routing_receipt(job: dict[str, Any], cluster: dict[str, Any], stage: dict[str, Any]) -> dict[str, Any]:
     content_stage = stage["content_stage"]
     intent = _intent_type(cluster)
     decision = str(cluster.get("decision") or "WATCH").upper()
-    evidence_count = int(cluster.get("evidence_count") or 0)
+    demand_evidence_count = _evidence_count(cluster, "demand_evidence_count", int(cluster.get("evidence_count") or 0))
+    answer_evidence_count = _evidence_count(cluster, "answer_evidence_count", int(cluster.get("evidence_count") or 0))
     source_families = set(cluster.get("source_families") or [])
+    answer_source_families = set(cluster.get("answer_source_families") or source_families)
     official = bool(cluster.get("official_evidence")) or bool(
         (job.get("official_facts") or {}).get("verified") if isinstance(job.get("official_facts"), dict) else False
     )
     gap = ""
     evidence_pass = False
     if content_stage == "PRE_LAUNCH":
-        evidence_pass = intent not in GAMEPLAY_INTENTS and official and evidence_count > 0
+        evidence_pass = intent not in GAMEPLAY_INTENTS and official and answer_evidence_count > 0
         if intent in GAMEPLAY_INTENTS:
             gap = "PRE_LAUNCH cannot release an unverified gameplay guide; wait for playable evidence."
         elif not evidence_pass:
             gap = "Need an official release/platform/edition or public-feature source."
     elif content_stage == "LAUNCH":
-        evidence_pass = evidence_count >= 2 and bool(source_families)
+        evidence_pass = answer_evidence_count >= 2 and bool(answer_source_families)
         if not evidence_pass:
             gap = "Need at least two current evidence items for the launch player problem."
     elif content_stage == "GROWTH":
-        evidence_pass = _gsc_has_demand(job, cluster) and evidence_count > 0
+        evidence_pass = _gsc_has_demand(job, cluster) and answer_evidence_count > 0
         if not evidence_pass:
             gap = "Need real GSC query/impression evidence plus current external demand."
     else:
         freshness = job.get("gsc_context") if isinstance(job.get("gsc_context"), dict) else {}
         maintenance = any(freshness.get(k) for k in ("stale_answer", "freshness_signal", "ctr_signal", "long_tail"))
-        evidence_pass = (_gsc_has_demand(job, cluster) or maintenance) and evidence_count > 0
+        evidence_pass = (_gsc_has_demand(job, cluster) or maintenance) and answer_evidence_count > 0
         if not evidence_pass:
             gap = "Need GSC maintenance/freshness/CTR/long-tail context and supporting evidence."
 
@@ -748,12 +974,7 @@ def build_content_routing_receipt(job: dict[str, Any], cluster: dict[str, Any], 
     if decision == "WATCH":
         publish_state = "RESEARCH_REQUIRED"
         gap = gap or "WATCH is not implementation-eligible; keep the scope under observation."
-    article_class = {
-        "PRE_LAUNCH": "OFFICIAL_REFERENCE",
-        "LAUNCH": "PROBLEM_SOLVING_GUIDE",
-        "GROWTH": "EXPANSION_GUIDE",
-        "STABLE": "MAINTENANCE_REFRESH",
-    }[content_stage]
+    article_class = _canonical_article_class(content_stage, intent, decision)
     reason = stage["reason"]
     if gap:
         reason += " " + gap
@@ -766,7 +987,7 @@ def build_content_routing_receipt(job: dict[str, Any], cluster: dict[str, Any], 
         "content_stage": content_stage,
         "intent_type": intent,
         "article_class": article_class,
-        "evidence_requirement": "PASS" if evidence_pass else "RESEARCH_REQUIRED",
+        "evidence_requirement": "PASS" if evidence_pass else "FAIL",
         "media_requirement": media,
         "writer_mode": "SHARED_ARTICLE_WRITER" if publish_state == "READY_FOR_WRITER" else "BLOCKED",
         "publish_state": publish_state,
@@ -775,6 +996,8 @@ def build_content_routing_receipt(job: dict[str, Any], cluster: dict[str, Any], 
         "primary_decision": primary,
         "confidence": "HIGH" if evidence_pass and decision in {"NEW", "EXPAND"} else "LOW",
         "page_path": str((cluster.get("existing_page_match") or {}).get("page", {}).get("url") or "").strip(),
+        "demand_evidence_count": demand_evidence_count,
+        "answer_evidence_count": answer_evidence_count,
     }
 
 
@@ -854,6 +1077,7 @@ def run_game_wide_social_discovery(job: dict[str, Any]) -> dict[str, Any]:
     log(f"Seed terms: {aliases}")
     evidence, source_counts, source_failures = collect_social_evidence(job)
     clusters = cluster_evidence(evidence, aliases)
+    answer_evidence = [item for item in (job.get("answer_evidence") or []) if isinstance(item, dict)]
     for cluster in clusters:
         gsc = match_gsc(cluster, job.get("gsc_queries") or [], aliases)
         page = match_existing_page(cluster, job.get("existing_pages") or [], aliases)
@@ -864,6 +1088,18 @@ def run_game_wide_social_discovery(job: dict[str, Any]) -> dict[str, Any]:
         decision, reason = decide_cluster(cluster)
         cluster["decision"] = decision
         cluster["reason"] = reason
+        matched_answers = _answer_evidence_for_cluster(cluster, answer_evidence)
+        cluster["demand_evidence"] = cluster.get("evidence") or []
+        cluster["demand_evidence_count"] = int(cluster.get("evidence_count") or 0)
+        cluster["answer_evidence"] = matched_answers
+        cluster["answer_evidence_count"] = len(matched_answers)
+        cluster["answer_source_families"] = sorted(
+            {
+                str(item.get("source_family") or item.get("source_type") or "").upper()
+                for item in matched_answers
+                if str(item.get("source_family") or item.get("source_type") or "").strip()
+            }
+        )
 
     stage = resolve_content_stage(job, clusters)
     routing_receipts = []
@@ -889,6 +1125,12 @@ def run_game_wide_social_discovery(job: dict[str, Any]) -> dict[str, Any]:
         "source_counts": source_counts,
         "source_failures": source_failures,
         "evidence_count": len(evidence),
+        "demand_evidence_count": len(evidence),
+        "answer_evidence_count": len(answer_evidence),
+        "demand_evidence": evidence,
+        "answer_evidence": answer_evidence,
+        "radar_id": job.get("radar_id") or job.get("site_key") or "",
+        "discovery_cycle_date": job.get("discovery_cycle_date") or "",
         "site_lifecycle": job.get("site_lifecycle") or job.get("lifecycle") or "",
         "content_stage": stage["content_stage"],
         "content_stage_reason": stage["reason"],
@@ -897,6 +1139,22 @@ def run_game_wide_social_discovery(job: dict[str, Any]) -> dict[str, Any]:
         "content_routing_receipts": routing_receipts,
         "content_decisions": routing_receipts,
         "decision_counts": decision_counts,
+        "discovery_status": "NO_SIGNAL" if not clusters else "CROSS_VALIDATED" if any(len(c.get("source_families") or []) >= 2 for c in clusters) else "DISCOVERED",
+        "external_source_families": sorted(
+            {
+                family
+                for cluster in clusters
+                for family in (cluster.get("source_families") or [])
+                if family in {"COMMUNITY", "VIDEO"}
+            }
+        ),
+        "top_clusters": [
+            {
+                "representative_signal": cluster.get("topic") or "",
+                "representative_question": ((cluster.get("representative_questions") or [""])[0]),
+            }
+            for cluster in clusters[:3]
+        ],
     }
 
 
@@ -907,11 +1165,20 @@ def build_game_wide_callback_body(result: dict[str, Any], *, result_path: str = 
         "job_type": JOB_TYPE,
         "research_type": "DEMAND_DISCOVERY",
         "execution_status": "COMPLETED",
-        "discovery_scope": {"scope": "GAME_WIDE"},
+        "radar_id": result.get("radar_id") or "",
+        "discovery_cycle_date": result.get("discovery_cycle_date") or "",
+        "discovery_scope": "GAME_WIDE",
+        "discovery_status": result.get("discovery_status") or "NO_SIGNAL",
+        "external_source_families": result.get("external_source_families") or [],
+        "anchor_evidence_count": 0,
+        "top_clusters": result.get("top_clusters") or [],
         "evidence_count": int(result.get("evidence_count") or 0),
+        "demand_evidence_count": int(result.get("demand_evidence_count") or 0),
+        "answer_evidence_count": int(result.get("answer_evidence_count") or 0),
         "cluster_count": len(result.get("clusters") or []),
         "decision_counts": result.get("decision_counts") or {},
         "result_path": result_path,
+        "research_pack_path": result.get("research_pack_path") or "",
         "site_lifecycle": result.get("site_lifecycle") or "",
         "content_stage": result.get("content_stage") or "",
         "content_stage_reason": result.get("content_stage_reason") or "",
@@ -926,6 +1193,7 @@ def run_job(job_path: Path) -> dict[str, Any]:
     job_id = str(job["job_id"]).strip()
     job_dir = ROOT / "jobs" / job_id
     result_path = job_dir / "game_wide_social_result.json"
+    research_pack_path = job_dir / "research_pack.json"
     status_path = job_dir / "status.json"
     job_copy_path = job_dir / "job.json"
 
@@ -933,7 +1201,10 @@ def run_job(job_path: Path) -> dict[str, Any]:
     write_json(status_path, {"job_id": job_id, "job_type": JOB_TYPE, "status": "RUNNING", "started_at": now_iso()})
     try:
         result = run_game_wide_social_discovery(job)
+        result["research_pack_path"] = f"jobs/{job_id}/research_pack.json"
+        research_pack = build_research_pack(job, result)
         write_json(result_path, result)
+        write_json(research_pack_path, research_pack)
         callback_ok = None
         if os.environ.get("RESEARCH_CALLBACK_URL"):
             callback_ok = rjr.post_callback_body(
@@ -950,7 +1221,10 @@ def run_job(job_path: Path) -> dict[str, Any]:
                 "status": "COMPLETED",
                 "finished_at": now_iso(),
                 "result_path": f"jobs/{job_id}/game_wide_social_result.json",
+                "research_pack_path": f"jobs/{job_id}/research_pack.json",
                 "evidence_count": result.get("evidence_count", 0),
+                "demand_evidence_count": result.get("demand_evidence_count", 0),
+                "answer_evidence_count": result.get("answer_evidence_count", 0),
                 "cluster_count": len(result.get("clusters") or []),
                 "decision_counts": result.get("decision_counts") or {},
                 "callback_ok": callback_ok,

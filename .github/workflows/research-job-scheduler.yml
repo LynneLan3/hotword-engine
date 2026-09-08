@@ -164,6 +164,7 @@ jobs:
             ${{ steps.game_wide_outputs.outputs.job_dir }}/job.json
             ${{ steps.game_wide_outputs.outputs.job_dir }}/status.json
             ${{ steps.game_wide_outputs.outputs.job_dir }}/game_wide_social_result.json
+            ${{ steps.game_wide_outputs.outputs.job_dir }}/research_pack.json
           retention-days: 30
           if-no-files-found: error
 
