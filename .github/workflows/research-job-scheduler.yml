@@ -108,3 +108,67 @@ jobs:
         run: |
           echo "Research job failed; artifacts have been preserved."
           exit 1
+
+  run-next-game-wide-discovery-job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run next pending GAME_WIDE discovery job
+        id: game_wide_job
+        continue-on-error: true
+        env:
+          RESEARCH_CALLBACK_URL: ${{ secrets.RESEARCH_CALLBACK_URL }}
+          RESEARCH_CALLBACK_TOKEN: ${{ secrets.RESEARCH_CALLBACK_TOKEN }}
+        run: python3 run_next_game_wide_discovery_job.py
+
+      - name: Check for GAME_WIDE job outputs
+        id: game_wide_outputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t job_dirs < <(
+            git status --porcelain -- jobs/ |
+              sed -nE 's/^.. ?"?jobs\/([^/]+).*/jobs\/\1/p' |
+              sort -u
+          )
+
+          if [ "${#job_dirs[@]}" -eq 0 ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No new GAME_WIDE outputs under jobs/; skip artifact upload"
+            exit 0
+          fi
+          if [ "${#job_dirs[@]}" -ne 1 ]; then
+            echo "ERROR: multiple GAME_WIDE job directories changed; refusing to mix artifacts:" >&2
+            printf '%s\n' "${job_dirs[@]}" >&2
+            exit 1
+          fi
+
+          job_dir="${job_dirs[0]}"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "job_dir=$job_dir" >> "$GITHUB_OUTPUT"
+          echo "Single GAME_WIDE job dir: $job_dir"
+
+      - name: Upload GAME_WIDE research results artifact
+        if: steps.game_wide_outputs.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: game-wide-research-results-${{ github.run_id }}
+          path: |
+            ${{ steps.game_wide_outputs.outputs.job_dir }}/job.json
+            ${{ steps.game_wide_outputs.outputs.job_dir }}/status.json
+            ${{ steps.game_wide_outputs.outputs.job_dir }}/game_wide_social_result.json
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Propagate GAME_WIDE job failure
+        if: steps.game_wide_job.outcome == 'failure'
+        run: |
+          echo "GAME_WIDE research job failed; artifacts have been preserved."
+          exit 1
