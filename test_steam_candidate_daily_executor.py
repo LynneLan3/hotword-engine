@@ -86,6 +86,43 @@ def _run_success(
 
 
 class SteamCandidateDailyExecutorTests(unittest.TestCase):
+    def test_preliminary_rank_uses_free_signals_and_excludes_controls(self) -> None:
+        jobs = [
+            _job("9100", first_round_type="🏢大盘对照"),
+            _job("9101", first_round_type="🔥趋势"),
+            _job("9102", first_round_type="🌱Early"),
+        ]
+        artifacts = {
+            "9101": {
+                "preflight": {
+                    "checked_at": "2026-09-08T10:00:00+08:00",
+                    "autocomplete": {"status": "AVAILABLE", "guide_intent": True, "relevant_ratio": 0.8},
+                },
+                "social": {"evidence_count": 6, "actionable_cluster_count": 1},
+            },
+            "9102": {
+                "preflight": {"autocomplete": {"status": "AVAILABLE", "guide_intent": False}},
+                "social": {"evidence_count": 1},
+            },
+        }
+        ranked = executor.preliminary_rank_candidates(jobs, artifacts)
+        self.assertEqual(ranked[0]["steam_app_id"], "9101")
+        self.assertTrue(ranked[0]["paid_eligible"])
+        control = next(row for row in ranked if row["steam_app_id"] == "9100")
+        self.assertFalse(control["paid_eligible"])
+        self.assertIn("CONTROL_EXCLUDED", control["reasons"])
+
+    def test_paid_gate_counts_candidate_games_and_reuses_cache(self) -> None:
+        ranked = [
+            {"steam_app_id": str(9200 + index), "paid_eligible": True, "preliminary_score": 10 - index}
+            for index in range(5)
+        ]
+        gate = executor.select_paid_top_candidates(ranked, paid_cache={"9201"}, daily_candidate_budget=3)
+        self.assertEqual([row["steam_app_id"] for row in gate["selected"]], ["9200", "9201", "9202"])
+        self.assertEqual(gate["new_paid_candidates"], ["9200", "9202"])
+        self.assertTrue(gate["selected"][1]["paid_cache_hit"])
+        self.assertTrue(gate["non_top3_paid_forbidden"])
+
     def test_fresh_jobs_are_capped_by_paid_budget(self) -> None:
         jobs = [_job(str(1000 + index), first_round_type=TYPES[index % 4]) for index in range(10)]
         calls: list[str] = []

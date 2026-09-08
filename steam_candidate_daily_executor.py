@@ -112,6 +112,115 @@ def _priority(first_round_type: Any) -> int:
     return 4
 
 
+def _number(value: Any) -> float:
+    try:
+        return float(str(value).replace(",", "").strip())
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def preliminary_opportunity_score(
+    job: dict[str, Any],
+    free_artifact: dict[str, Any] | None = None,
+    *,
+    existing_site_index: exclusion.ExistingSiteIndex | None = None,
+) -> dict[str, Any]:
+    """Rank one candidate using only existing/free/cached evidence.
+
+    ponytail: additive heuristic; calibrate weights only after outcome evidence.
+    """
+    signals = job.get("steam_signals") if isinstance(job.get("steam_signals"), dict) else {}
+    artifact = free_artifact if isinstance(free_artifact, dict) else {}
+    preflight_result = artifact.get("preflight") if isinstance(artifact.get("preflight"), dict) else artifact
+    autocomplete = preflight_result.get("autocomplete") if isinstance(preflight_result.get("autocomplete"), dict) else {}
+    social = artifact.get("social") if isinstance(artifact.get("social"), dict) else {}
+    first_round_type = _text(signals.get("first_round_type"))
+    control = _priority(first_round_type) == 2
+    existing = bool(existing_site_index and exclusion.evaluate_existing_site(job, existing_site_index).get("existingSite"))
+    release_stage = _text(signals.get("release_stage")).lower()
+    lifecycle_score = 15 if release_stage in {"released", "growth", "stable", "已发布"} else 10 if release_stage in {"early", "抢先体验"} else 5
+    intent_score = 20 if autocomplete.get("guide_intent") else 0
+    entity_score = 10 if _number(autocomplete.get("relevant_ratio")) >= 0.5 else 5 if autocomplete.get("status") == "AVAILABLE" else 0
+    social_score = min(15, _number(social.get("evidence_count")) + 2 * _number(social.get("actionable_cluster_count")))
+    velocity_score = min(25, max(0, _number(signals.get("followers_gain_7d") or signals.get("followers_gain")) / 100))
+    historical_score = min(10, _number(signals.get("historical_evidence_count") or signals.get("history_count")))
+    freshness_score = 5 if _text(preflight_result.get("checked_at")) else 0
+    score = round(lifecycle_score + intent_score + entity_score + social_score + velocity_score + historical_score + freshness_score, 3)
+    reasons: list[str] = []
+    if intent_score:
+        reasons.append("FREE_GUIDE_INTENT")
+    if social_score:
+        reasons.append("FREE_SOCIAL_EVIDENCE")
+    if velocity_score:
+        reasons.append("STEAM_VELOCITY")
+    if historical_score:
+        reasons.append("HISTORICAL_EVIDENCE")
+    if existing:
+        reasons.append("EXISTING_SITE")
+    if control:
+        reasons.append("CONTROL_EXCLUDED")
+    eligible = not existing and not control and score > 0
+    return {
+        "steam_app_id": _text(job.get("steam_app_id")),
+        "job_id": _text(job.get("job_id")),
+        "game_name": _text(job.get("game_name")),
+        "preliminary_score": score,
+        "paid_eligible": eligible,
+        "control": control,
+        "existing_site": existing,
+        "reasons": reasons,
+        "cost_basis": "FREE_EXISTING_CACHED_ONLY",
+    }
+
+
+def preliminary_rank_candidates(
+    jobs: list[dict[str, Any]],
+    free_artifacts: dict[str, dict[str, Any]] | None = None,
+    *,
+    existing_site_index: exclusion.ExistingSiteIndex | None = None,
+) -> list[dict[str, Any]]:
+    """Return a stable, non-paid ranking for candidate games."""
+    artifacts = free_artifacts if isinstance(free_artifacts, dict) else {}
+    ranked = [
+        preliminary_opportunity_score(
+            job,
+            artifacts.get(_text(job.get("steam_app_id"))) or artifacts.get(_text(job.get("job_id"))),
+            existing_site_index=existing_site_index,
+        )
+        for job in jobs
+    ]
+    return sorted(ranked, key=lambda row: (-row["preliminary_score"], row["steam_app_id"], row["job_id"]))
+
+
+def select_paid_top_candidates(
+    ranked: list[dict[str, Any]],
+    *,
+    paid_cache: set[str] | None = None,
+    daily_candidate_budget: int = 3,
+) -> dict[str, Any]:
+    """Apply the single candidate-level paid-verification boundary."""
+    if daily_candidate_budget < 0:
+        raise ValueError("daily_candidate_budget must be non-negative")
+    cache = paid_cache or set()
+    selected: list[dict[str, Any]] = []
+    new_paid: list[str] = []
+    for row in ranked:
+        app_id = _text(row.get("steam_app_id"))
+        if not app_id or not row.get("paid_eligible") or len(selected) >= daily_candidate_budget:
+            continue
+        cached = app_id in cache
+        selected.append({**row, "paid_cache_hit": cached, "new_paid_attempt": not cached})
+        if not cached:
+            new_paid.append(app_id)
+    return {
+        "selected": selected,
+        "new_paid_candidates": new_paid,
+        "new_paid_candidate_count": len(new_paid),
+        "daily_candidate_budget": daily_candidate_budget,
+        "non_top3_paid_forbidden": True,
+    }
+
+
 def normalize_and_sort_jobs(
     payload: dict[str, Any],
     *,
