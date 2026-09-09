@@ -152,6 +152,7 @@ def run_job(
     social_fn: Callable[[dict[str, Any]], dict[str, Any]] = research_runner.run_candidate_social,
     post_fn: Callable[[str, dict[str, Any]], dict[str, Any]] | None = None,
     dry_run: bool = False,
+    callback_extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     job = _load(job_path)
     job_id = _text(job.get("job_id"))
@@ -200,6 +201,8 @@ def run_job(
                 pass
 
     payload = _callback_payload(job, result)
+    if isinstance(callback_extra, dict):
+        payload.update({key: value for key, value in callback_extra.items() if value is not None})
     sent = False
     callback_ok: bool | None = None
     callback_error = None

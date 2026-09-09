@@ -22,16 +22,20 @@ import game_wide_social_runner as social_runner
 import steam_candidate_research_job_runner as runner
 import steam_candidate_preflight as preflight
 import steam_candidate_machine_research_executor as machine_research_executor
+import steam_candidate_preflight_executor as preflight_executor
 import today_action_pipeline as today_actions
 import search_demand_providers as providers
 
 ROOT = Path(__file__).resolve().parent
 JOB_LIMIT_ENV = "STEAM_CANDIDATE_RESEARCH_DAILY_JOB_LIMIT"
 PAID_BUDGET_ENV = "STEAM_CANDIDATE_RESEARCH_DAILY_PAID_ATTEMPT_BUDGET"
+PAID_MODE_ENV = "STEAM_CANDIDATE_RESEARCH_PAID_MODE"
 TARGET_APP_IDS_ENV = "STEAM_CANDIDATE_TARGET_APP_IDS"
 CONTINUE_ON_CALLBACK_FAIL_ENV = "STEAM_CANDIDATE_CONTINUE_ON_CALLBACK_FAIL"
 DEFAULT_MAX_TOTAL_JOBS = 5
 DEFAULT_PAID_ATTEMPT_BUDGET = 3
+DEFAULT_PAID_MODE = "MANUAL"
+PAID_MODES = {"MANUAL", "AUTO"}
 HUMAN_READY_ENV = "STEAM_CANDIDATE_HUMAN_READY"
 DAILY_PAID_CANDIDATE_BUDGET = 3
 INJECTED_FETCH_URL = "https://steam.example/exec?action=pendingSteamCandidateResearchJobs"
@@ -77,6 +81,13 @@ def resolve_limits(
         else _configured_limit(PAID_BUDGET_ENV, DEFAULT_PAID_ATTEMPT_BUDGET)
     )
     return job_limit, paid_budget
+
+
+def resolve_paid_mode(paid_mode: str | None = None) -> str:
+    mode = _text(paid_mode if paid_mode is not None else os.environ.get(PAID_MODE_ENV, DEFAULT_PAID_MODE)).upper()
+    if mode not in PAID_MODES:
+        raise ValueError(f"{PAID_MODE_ENV} must be MANUAL or AUTO")
+    return mode
 
 
 def _target_app_ids() -> set[str] | None:
@@ -358,6 +369,49 @@ def _read_artifact(root: Path, job: dict[str, Any]) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _manual_callback_extra(artifact: dict[str, Any]) -> dict[str, Any]:
+    preflight_result = artifact.get("preflight") if isinstance(artifact.get("preflight"), dict) else {}
+    machine = artifact.get("machine_fields") if isinstance(artifact.get("machine_fields"), dict) else {}
+    social = artifact.get("social") if isinstance(artifact.get("social"), dict) else {}
+    clusters = social.get("top_clusters") if isinstance(social.get("top_clusters"), list) else []
+    topics = [
+        _text(item.get("topic") or item.get("topic_key"))
+        for item in clusters[:5]
+        if isinstance(item, dict) and _text(item.get("topic") or item.get("topic_key"))
+    ]
+    social_summary = {
+        "status": _text(social.get("status")).upper() or "UNAVAILABLE",
+        "evidence_count": int(social.get("evidence_count") or 0),
+        "cluster_count": len(clusters),
+        "actionable_cluster_count": int(social.get("actionable_cluster_count") or 0),
+        "watch_cluster_count": int(social.get("watch_cluster_count") or 0),
+        "top_topics": topics,
+        "verdict": _text(machine.get("social_verdict") or machine.get("social_result")),
+        "one_liner": _text(machine.get("social_one_liner")),
+    }
+    autocomplete = preflight_result.get("autocomplete") if isinstance(preflight_result.get("autocomplete"), dict) else {}
+    return {
+        "machine_fields": machine,
+        "social_summary": social_summary,
+        "manual_research_handoff": {"trends_required": True, "serp_required": True},
+        "free_evidence": {
+            "autocomplete": {
+                "status": _text(autocomplete.get("status")).upper(),
+                "guide_intent": bool(autocomplete.get("guide_intent")),
+                "relevant_ratio": autocomplete.get("relevant_ratio"),
+            },
+            "social": {
+                "evidence_count": social_summary["evidence_count"],
+                "actionable_cluster_count": social_summary["actionable_cluster_count"],
+                "watch_cluster_count": social_summary["watch_cluster_count"],
+                "top_topics": topics,
+            },
+        },
+        "paid_verification_status": "DEFERRED",
+        "paid_provider_calls": 0,
+    }
+
+
 def _write_temp_job(temp_root: Path, job: dict[str, Any]) -> Path:
     path = temp_root / f"{_text(job.get('job_id'))}.json"
     path.write_text(json.dumps(job, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -375,6 +429,8 @@ def run_human_ready_daily_executor(
     dry_run: bool = False,
     now: datetime | None = None,
     existing_site_index: exclusion.ExistingSiteIndex | None = None,
+    paid_mode: str | None = None,
+    preflight_callback_fn: RunFn | None = None,
 ) -> dict[str, Any]:
     """Run the existing daily machinery in G040 dependency order."""
     social_runner.reset_daily_provider_circuit_breaker()
@@ -392,6 +448,7 @@ def run_human_ready_daily_executor(
     pending_fetched, jobs, existing_excluded = normalize_and_sort_jobs(payload, existing_site_index=site_index)
     free_first_fn = free_first_fn or machine_research_executor.run_free_first_job
     paid_run_fn = paid_run_fn or machine_research_executor.run_job
+    mode = resolve_paid_mode(paid_mode)
     budget = min(resolve_limits(max_jobs, paid_attempt_budget)[1], DAILY_PAID_CANDIDATE_BUDGET)
     run_date = started.strftime("%Y%m%d")
     free_results: list[dict[str, Any]] = []
@@ -418,6 +475,21 @@ def run_human_ready_daily_executor(
         paid_results: list[dict[str, Any]] = []
         if not dry_run:
             for selected in gate["selected"]:
+                if mode == "MANUAL":
+                    job = next(job for job in jobs if _text(job.get("steam_app_id")) == selected["steam_app_id"])
+                    job_path = _write_temp_job(temp_root, job)
+                    callback = preflight_callback_fn or preflight_executor.run_job
+                    try:
+                        outcome = callback(
+                            job_path,
+                            root=root,
+                            dry_run=False,
+                            callback_extra=_manual_callback_extra(_read_artifact(root, job)),
+                        )
+                    except TypeError:
+                        outcome = callback(job_path, root=root, dry_run=False)
+                    paid_results.append(outcome if isinstance(outcome, dict) else {"execution_status": "FAILED"})
+                    continue
                 if selected["paid_cache_hit"]:
                     paid_results.append({"execution_status": "PAID_CACHE_REUSED", "callback_ok": None})
                     continue
@@ -444,6 +516,7 @@ def run_human_ready_daily_executor(
         "free_first_processed": len(free_results),
         "preliminary_ranking": ranking,
         "paid_gate": gate,
+        "paid_mode": mode,
         "paid_processed": len(paid_results),
         "paid_results": paid_results,
         "daily_paid_candidate_budget": budget,
@@ -533,6 +606,8 @@ def run_daily_executor(
     now: datetime | None = None,
     existing_site_index: exclusion.ExistingSiteIndex | None = None,
     human_ready: bool | None = None,
+    paid_mode: str | None = None,
+    preflight_callback_fn: RunFn | None = None,
 ) -> dict[str, Any]:
     if human_ready is None:
         human_ready = _human_ready_enabled()
@@ -540,7 +615,8 @@ def run_daily_executor(
         return run_human_ready_daily_executor(
             root=root, fetch_fn=fetch_fn, max_jobs=max_jobs,
             paid_attempt_budget=paid_attempt_budget, dry_run=dry_run,
-            now=now, existing_site_index=existing_site_index,
+            now=now, existing_site_index=existing_site_index, paid_mode=paid_mode,
+            preflight_callback_fn=preflight_callback_fn,
         )
     job_limit, paid_budget = resolve_limits(max_jobs, paid_attempt_budget)
     run_fn = run_fn or machine_research_executor.run_job
@@ -673,6 +749,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--max-jobs", type=int, default=None)
     parser.add_argument("--paid-attempt-budget", type=int, default=None)
     parser.add_argument("--human-ready", action="store_true")
+    parser.add_argument("--paid-mode", default=None, choices=sorted(PAID_MODES))
     args = parser.parse_args(argv)
     try:
         summary = run_daily_executor(
@@ -680,6 +757,7 @@ def main(argv: list[str] | None = None) -> int:
             paid_attempt_budget=args.paid_attempt_budget,
             dry_run=args.dry_run,
             human_ready=args.human_ready,
+            paid_mode=args.paid_mode,
         )
     except (SystemExit, ValueError) as exc:
         print(f"ERROR: {exc}")
