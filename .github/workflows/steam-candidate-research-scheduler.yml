@@ -19,9 +19,6 @@ on:
         description: Continue processing remaining jobs after a callback failure
         required: false
         default: 'false'
-  schedule:
-    # 01:15 UTC = 09:15 Asia/Shanghai.
-    - cron: '15 1 * * *'
 
 permissions:
   contents: read
