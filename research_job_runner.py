@@ -107,6 +107,8 @@ def status_payload(
         "evidence_count": evidence_count,
         "result_path": result_path,
     }
+    if str(job.get("batch_id") or "").strip():
+        out["batch_id"] = str(job["batch_id"]).strip()
     if error:
         out["error"] = error
     return out
@@ -238,6 +240,7 @@ def build_callback_body(
     job_id = str(status["job_id"]).strip()
     status_enum = str(status.get("status") or "").strip().upper()
     research_type = str(status.get("research_type") or "").strip().upper()
+    batch_id = str(status.get("batch_id") or (job or {}).get("batch_id") or "").strip()
     if status_enum == "FAILED":
         body = {
             "job_id": job_id,
@@ -246,6 +249,8 @@ def build_callback_body(
         }
         if research_type and research_type != "CONTENT_RESEARCH":
             body["research_type"] = research_type
+        if batch_id:
+            body["batch_id"] = batch_id
         return body
     if status_enum == "WATCH":
         # No evidence payload — Apps Script must not write「研究审核」.
@@ -263,6 +268,8 @@ def build_callback_body(
         }
         if research_type and research_type != "CONTENT_RESEARCH":
             body["research_type"] = research_type
+        if batch_id:
+            body["batch_id"] = batch_id
         return body
     body: dict[str, Any] = {
         "job_id": job_id,
@@ -275,6 +282,8 @@ def build_callback_body(
     }
     if research_type and research_type != "CONTENT_RESEARCH":
         body["research_type"] = research_type
+    if batch_id:
+        body["batch_id"] = batch_id
     if job:
         body["content_decision"] = build_content_decision(job, result or {})
     return body

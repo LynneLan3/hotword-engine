@@ -27,6 +27,16 @@ def main() -> int:
     started_at = br.now_iso()
     identifier = br.batch_id(started_at)
     receipt_file = br.receipt_path(fpj.ROOT, identifier)
+    br.write_receipt(
+        receipt_file,
+        br.build_receipt(
+            identifier=identifier,
+            started_at=started_at,
+            finished_at=started_at,
+            status="RESEARCH_PENDING",
+            stage="RESEARCH_PENDING",
+        ),
+    )
 
     def finish(receipt: dict[str, object], exit_code: int) -> int:
         br.write_receipt(receipt_file, receipt)
@@ -66,7 +76,7 @@ def main() -> int:
             started_at=started_at,
             finished_at=br.now_iso(),
             status="NO_PENDING_JOB",
-            stage="NO_PENDING_JOB",
+            stage="RESEARCH_PENDING",
         )
         print("Research job has_job=false final_failure_reason=NO_PENDING_JOB")
         return finish(receipt, 0)
@@ -75,6 +85,7 @@ def main() -> int:
     job_id = str(selected.get("job_id") or "").strip() or None
     try:
         research_job = fpj.to_research_job(selected)
+        research_job["batch_id"] = identifier
     except (SystemExit, ValueError) as exc:
         receipt = br.build_receipt(
             identifier=identifier,
@@ -101,7 +112,7 @@ def main() -> int:
     evidence_count = int(status.get("evidence_count") or 0)
     callback_ok = status.get("callback_ok") is not False
     if research_status in {"REVIEW", "WATCH"} and callback_ok:
-        receipt_status = "SUCCESS"
+        receipt_status = "RESEARCH_PASS"
         stage = "RESEARCH_PASS"
         failure_stage = None
         failure_reason = None

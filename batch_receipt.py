@@ -9,6 +9,25 @@ from pathlib import Path
 from typing import Any
 
 REPO = "LynneLan3/hotword-engine"
+LIFECYCLE_STAGES = (
+    "RESEARCH_PENDING",
+    "RESEARCH_PASS",
+    "IMPLEMENTATION_PENDING",
+    "IMPLEMENTED",
+    "DEPLOYMENT_PENDING",
+    "DEPLOYED",
+    "INDEXING_CHECKED",
+    "FAILED",
+)
+ACTION_ALIASES = {
+    "UPDATE_PAGE": "UPDATE",
+    "CREATE_PAGE": "NEW",
+    "EXPAND_PAGE": "EXPAND",
+}
+
+
+class BatchReceiptTransitionError(ValueError):
+    pass
 
 
 def now_iso() -> str:
@@ -131,22 +150,131 @@ def build_receipt(
     return receipt
 
 
+def _normalized_action(value: Any) -> str:
+    action = str(value or "").strip().upper()
+    return ACTION_ALIASES.get(action, action)
+
+
+def _has_implementation_evidence(receipt: dict[str, Any]) -> bool:
+    implementation = receipt.get("implementation") or {}
+    return (
+        str(implementation.get("status") or "").upper() == "IMPLEMENTED"
+        and _normalized_action(implementation.get("action")) in {"UPDATE", "NEW", "EXPAND"}
+        and bool(implementation.get("changed_files"))
+        and bool(implementation.get("canonical_urls"))
+    )
+
+
+def _has_deployment_evidence(receipt: dict[str, Any]) -> bool:
+    deployment = receipt.get("deployment") or {}
+    git = receipt.get("git") or {}
+    return (
+        str(deployment.get("status") or "").upper() in {"DEPLOYED", "PASS"}
+        and bool(deployment.get("production_url"))
+        and bool(deployment.get("changed_urls"))
+        and bool(git.get("commit_sha"))
+        and bool(git.get("commit_url"))
+    )
+
+
+def _has_indexing_evidence(receipt: dict[str, Any]) -> bool:
+    indexing = receipt.get("indexing") or {}
+    return any(
+        str(indexing.get(field) or "").upper() not in {"", "NOT_RUN"}
+        for field in ("sitemap", "indexnow", "IndexNow", "url_inspection", "URL Inspection")
+    )
+
+
+def advance_receipt(receipt: dict[str, Any], update: dict[str, Any]) -> dict[str, Any]:
+    """Apply one evidence-backed lifecycle transition to an existing receipt."""
+    if not isinstance(receipt, dict) or not isinstance(update, dict):
+        raise BatchReceiptTransitionError("receipt and update must be objects")
+    if update.get("batch_id") and update.get("batch_id") != receipt.get("batch_id"):
+        raise BatchReceiptTransitionError("batch_id does not match receipt")
+
+    current = str(receipt.get("status") or "").strip().upper()
+    target = str(update.get("status") or current).strip().upper()
+    if target not in LIFECYCLE_STAGES and target != "NO_PENDING_JOB":
+        raise BatchReceiptTransitionError(f"unsupported lifecycle status: {target}")
+    if current == "FAILED" and target != "FAILED":
+        raise BatchReceiptTransitionError("FAILED receipt is terminal")
+    allowed = {
+        ("RESEARCH_PASS", "IMPLEMENTATION_PENDING"),
+        ("RESEARCH_PASS", "IMPLEMENTED"),
+        ("IMPLEMENTATION_PENDING", "IMPLEMENTED"),
+        ("IMPLEMENTED", "DEPLOYMENT_PENDING"),
+        ("IMPLEMENTED", "DEPLOYED"),
+        ("DEPLOYMENT_PENDING", "DEPLOYED"),
+        ("DEPLOYED", "INDEXING_CHECKED"),
+    }
+    if target != current and target != "FAILED" and (current, target) not in allowed:
+        raise BatchReceiptTransitionError(f"invalid lifecycle transition: {current} -> {target}")
+
+    merged = dict(receipt)
+    for section in ("implementation", "git", "deployment", "indexing", "links"):
+        if isinstance(update.get(section), dict):
+            merged[section] = {**(merged.get(section) or {}), **update[section]}
+    merged["status"] = target
+    merged["stage"] = target
+    if target == "IMPLEMENTED" and not _has_implementation_evidence(merged):
+        raise BatchReceiptTransitionError("IMPLEMENTED requires changed_files, canonical_urls, and action evidence")
+    if target == "DEPLOYED" and not (_has_implementation_evidence(merged) and _has_deployment_evidence(merged)):
+        raise BatchReceiptTransitionError("DEPLOYED requires implementation, commit, production_url, and changed_urls evidence")
+    if target == "INDEXING_CHECKED" and not (_has_deployment_evidence(merged) and _has_indexing_evidence(merged)):
+        raise BatchReceiptTransitionError("INDEXING_CHECKED requires deployment and indexing evidence")
+    if target == "FAILED":
+        failure_reason = str(update.get("failure_reason") or "").strip()
+        if not failure_reason:
+            raise BatchReceiptTransitionError("FAILED requires failure_reason")
+        merged["failure_stage"] = str(update.get("failure_stage") or current or "UNKNOWN")
+        merged["failure_reason"] = failure_reason
+        if update.get("failure_detail"):
+            merged["failure_detail"] = str(update["failure_detail"])[:300]
+    if merged.get("deployment", {}).get("production_url"):
+        merged.setdefault("links", {})["production"] = merged["deployment"]["production_url"]
+    if merged.get("git", {}).get("commit_url"):
+        merged.setdefault("links", {})["commit"] = merged["git"]["commit_url"]
+    merged["summary"] = human_summary(merged)
+    return merged
+
+
 def human_summary(receipt: dict[str, Any]) -> str:
     jobs = receipt.get("research_jobs") or []
     site = str((jobs[0] if jobs else {}).get("site") or receipt.get("implementation", {}).get("site") or "UNKNOWN")
     evidence = receipt.get("evidence") or {}
     links = receipt.get("links") or {}
-    return "\n".join(
-        [
+    if str(receipt.get("status") or "").upper() in {"DEPLOYED", "INDEXING_CHECKED"} and _has_implementation_evidence(receipt) and _has_deployment_evidence(receipt):
+        implementation = receipt.get("implementation") or {}
+        indexing = receipt.get("indexing") or {}
+        action = _normalized_action(implementation.get("action"))
+        urls = implementation.get("canonical_urls") or []
+        lines = [
             f"AUTO CONTENT BATCH {receipt.get('batch_id')}",
             f"Site: {site}",
             f"Result: {receipt.get('status')}",
             f"Research: {len(jobs)} jobs / {evidence.get('PASS', 0)} Evidence PASS",
-            f"Implemented: {len(receipt.get('implementation', {}).get('canonical_urls') or [])} URLs",
+            "",
+            "Implemented:",
+            *[f"- {action} {url}" for url in urls],
+            "",
+            f"Commit: {(receipt.get('git') or {}).get('commit_url') or 'NOT_AVAILABLE'}",
+            f"Production: {(receipt.get('deployment') or {}).get('production_url') or 'NOT_AVAILABLE'}",
+            f"Indexing: {indexing.get('IndexNow') or indexing.get('indexnow') or 'NOT_RUN'}",
+            f"Manual GSC Request Indexing: {', '.join(indexing.get('manual_request_indexing_urls') or []) or 'NONE'}",
             f"Receipt: {links.get('receipt')}",
             f"GitHub Run: {links.get('scheduler_run') or 'NOT_AVAILABLE'}",
-            f"Commit: {links.get('commit') or 'NOT_AVAILABLE'}",
-            f"Production: {links.get('production') or 'NOT_RUN'}",
+        ]
+        return "\n".join(lines)
+    return "\n".join(
+        [
+            f"RESEARCH BATCH {receipt.get('batch_id')}",
+            f"Site: {site}",
+            f"Result: {receipt.get('status')}",
+            f"Evidence PASS: {evidence.get('PASS', 0)}",
+            "Implementation: NOT_RUN" if str(receipt.get("status") or "").upper() in {"RESEARCH_PENDING", "RESEARCH_PASS", "NO_PENDING_JOB"} else f"Implementation: {(receipt.get('implementation') or {}).get('status') or 'UNKNOWN'}",
+            f"Production: {(receipt.get('deployment') or {}).get('status') or 'NOT_RUN'}",
+            f"Receipt: {links.get('receipt')}",
+            f"GitHub Run: {links.get('scheduler_run') or 'NOT_AVAILABLE'}",
         ]
     )
 

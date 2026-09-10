@@ -125,7 +125,7 @@ class BatchReceiptTests(unittest.TestCase):
         code, receipt = self._run({"jobs": []}, {})
         self.assertEqual(code, 0)
         self.assertEqual(receipt["status"], "NO_PENDING_JOB")
-        self.assertEqual(receipt["stage"], "NO_PENDING_JOB")
+        self.assertEqual(receipt["stage"], "RESEARCH_PENDING")
         self.assertEqual(receipt["research_jobs"], [])
 
     def test_success_receipt_keeps_research_separate_from_production(self) -> None:
@@ -135,7 +135,7 @@ class BatchReceiptTests(unittest.TestCase):
             {"status": "REVIEW", "callback_ok": True, "evidence_count": 2},
         )
         self.assertEqual(code, 0)
-        self.assertEqual(receipt["status"], "SUCCESS")
+        self.assertEqual(receipt["status"], "RESEARCH_PASS")
         self.assertEqual(receipt["stage"], "RESEARCH_PASS")
         self.assertEqual(receipt["research_jobs"][0]["job_id"], job["job_id"])
         self.assertEqual(receipt["deployment"]["status"], "NOT_RUN")
