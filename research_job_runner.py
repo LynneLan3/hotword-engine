@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any
 
 import research_runner as rr
+import upstream_http
 
 ROOT = Path(__file__).resolve().parent
 REQUIRED_FIELDS = (
@@ -295,11 +296,12 @@ def _http_exchange(
     # Apps Script Web Apps return 302 to a one-shot ContentService URL.
     # Do not auto-follow: urllib would turn POST into GET and drop the body.
     opener = urllib.request.build_opener(urllib.request.HTTPHandler())
-    try:
-        with opener.open(req, timeout=CALLBACK_TIMEOUT_SEC) as resp:
-            return resp.getcode() or 200, dict(resp.headers.items()), resp.read()
-    except urllib.error.HTTPError as exc:
-        return exc.code, dict(exc.headers.items() if exc.headers else {}), exc.read() or b""
+    return upstream_http.request_with_retry(
+        req,
+        timeout=CALLBACK_TIMEOUT_SEC,
+        opener=opener,
+        log=lambda message: rr.log(f"Callback request {message}"),
+    )
 
 
 def post_research_callback(
@@ -339,6 +341,10 @@ def post_callback_body(body: dict[str, Any]) -> bool:
         "Accept": "application/json,text/plain,*/*",
     }
 
+    def safe_text(value: Any) -> str:
+        text = str(value or "")
+        return text.replace(token, "[REDACTED]") if token else text
+
     try:
         code, resp_headers, raw = _http_exchange(
             url, method="POST", data=payload, headers=headers
@@ -361,23 +367,29 @@ def post_callback_body(body: dict[str, Any]) -> bool:
 
         text = raw.decode("utf-8", errors="replace").strip()
         if code < 200 or code >= 300:
-            rr.log(f"Callback error    HTTP {code}: {text[:300]}")
+            rr.log(f"Callback error    HTTP {code}: {safe_text(text)[:300]}")
             return False
         try:
             parsed = json.loads(text) if text else {}
         except json.JSONDecodeError:
-            rr.log(f"Callback error    non-JSON response: {text[:300]}")
+            rr.log(f"Callback error    non-JSON response: {safe_text(text)[:300]}")
             return False
         if not isinstance(parsed, dict) or not parsed.get("ok"):
             err = parsed.get("error") if isinstance(parsed, dict) else text
-            rr.log(f"Callback error    {err}")
+            rr.log(f"Callback error    {safe_text(err)}")
             return False
         rr.log(
             f"Callback          OK  HTTP {code}  status={str(body.get('status') or body.get('execution_status') or '')}"
         )
         return True
+    except upstream_http.UpstreamRequestError as exc:
+        rr.log(
+            f"Callback error    final_failure_reason={exc.reason} "
+            f"attempts={exc.attempts}"
+        )
+        return False
     except Exception as exc:
-        rr.log(f"Callback error    {exc}")
+        rr.log(f"Callback error    {safe_text(exc)}")
         return False
 
 
