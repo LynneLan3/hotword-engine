@@ -15,9 +15,6 @@ on:
         description: Continue after a callback failure
         required: false
         default: 'false'
-  schedule:
-    # 01:45 UTC = 09:45 Asia/Shanghai (after steam candidate research)
-    - cron: '45 1 * * *'
 
 permissions:
   contents: read
