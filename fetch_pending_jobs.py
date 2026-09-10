@@ -20,6 +20,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+import upstream_http
+
 ROOT = Path(__file__).resolve().parent
 PENDING_JOBS_URL = (
     "https://script.google.com/macros/s/"
@@ -44,6 +46,15 @@ OPTIONAL_FIELDS = (
 )
 
 
+class PendingJobsFetchError(RuntimeError):
+    def __init__(self, reason: str, detail: str, *, attempts: int, status_code: int | None = None) -> None:
+        self.reason = reason
+        self.detail = detail
+        self.attempts = attempts
+        self.status_code = status_code
+        super().__init__(detail)
+
+
 def write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -56,19 +67,38 @@ def fetch_pending_jobs() -> dict[str, Any]:
         method="GET",
     )
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            body = response.read().decode("utf-8")
-    except urllib.error.URLError as exc:
-        raise SystemExit(f"Failed to fetch pending jobs: {exc}") from exc
+        code, _, raw = upstream_http.request_with_retry(
+            request,
+            timeout=30,
+            opener=urllib.request.urlopen,
+            log=lambda message: print(f"Pending jobs request {message}"),
+        )
+    except upstream_http.UpstreamRequestError as exc:
+        print(
+            f"Pending jobs has_job=false final_failure_reason={exc.reason} "
+            f"attempts={exc.attempts}"
+        )
+        raise PendingJobsFetchError(
+            exc.reason,
+            exc.detail,
+            attempts=exc.attempts,
+            status_code=exc.status_code,
+        ) from exc
+    if code < 200 or code >= 300:
+        raise PendingJobsFetchError("UPSTREAM_HTTP_ERROR", f"HTTP {code}", attempts=1, status_code=code)
+    try:
+        body = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise PendingJobsFetchError("UPSTREAM_HTTP_ERROR", "response was not UTF-8", attempts=1) from exc
     try:
         payload = json.loads(body)
     except json.JSONDecodeError as exc:
-        raise SystemExit(f"Pending jobs API did not return JSON: {exc}") from exc
+        raise PendingJobsFetchError("UPSTREAM_HTTP_ERROR", "response was not JSON", attempts=1) from exc
     if not isinstance(payload, dict):
-        raise SystemExit("Pending jobs API returned a non-object JSON payload")
+        raise PendingJobsFetchError("UPSTREAM_HTTP_ERROR", "response was not a JSON object", attempts=1)
     jobs = payload.get("jobs")
     if not isinstance(jobs, list):
-        raise SystemExit("Pending jobs API response missing a jobs array")
+        raise PendingJobsFetchError("UPSTREAM_HTTP_ERROR", "response missing a jobs array", attempts=1)
     return payload
 
 
@@ -91,7 +121,11 @@ def to_research_job(job: dict[str, Any]) -> dict[str, Any]:
 
 
 def main() -> int:
-    payload = fetch_pending_jobs()
+    try:
+        payload = fetch_pending_jobs()
+    except PendingJobsFetchError as exc:
+        print(f"Pending jobs fetch failed reason={exc.reason} attempts={exc.attempts}")
+        return 1
     pending_path = ROOT / "input" / "pending_jobs.json"
     job_path = ROOT / "input" / "research_job.json"
     write_json(pending_path, payload)
