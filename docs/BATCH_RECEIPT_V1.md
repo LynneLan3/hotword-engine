@@ -26,6 +26,13 @@ production URL, and changed URLs. `INDEXING_CHECKED` requires at least one
 indexing result. These checks prevent a research result from being displayed
 as a deployed content batch.
 
+The cloud operator applies the same contract through the GitHub
+`repository_dispatch` event `batch-receipt-update`. The callback workflow
+replays the supplied base receipt plus one patch and uploads the updated
+`jobs/batches/<batch_id>/batch_receipt.json` under the same batch ID. The
+artifact is immutable per run, but there is no second receipt schema or
+parallel ledger.
+
 ## Ownership and next hop
 
 - Research queue and Research Job state: GSC Research Tasks; execution and
@@ -36,7 +43,9 @@ as a deployed content batch.
   its existing `publish:production` contract.
 - Production Intervention Receipt and indexing writeback: GSC runtime.
 
-The existing callback updates Research Job state but does not yet deliver a
-receipt patch back into this repository. The next legal integration is for the
-cloud operator to carry this `batch_id` into its handoff/publisher result and
-invoke the receipt patch contract; no game-site repository is modified here.
+The Research callback persists `ResearchBatchID` and `SchedulerRunID` into the
+GSC handoff. The cloud operator retrieves the original scheduler artifact,
+uses the target repo's real commit/deploy result, and dispatches each patch.
+The GSC ledger client supplies the indexing patch after its existing
+`recordPublishedBatch` writeback. No game-site repository is modified by the
+receipt integration itself.

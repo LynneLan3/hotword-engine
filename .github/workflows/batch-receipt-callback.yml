@@ -1,0 +1,55 @@
+name: Batch Receipt Callback
+
+on:
+  repository_dispatch:
+    types: [batch-receipt-update]
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  update-receipt:
+    if: ${{ github.event.client_payload.batch_id != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply receipt callback
+        env:
+          BATCH_ID: ${{ github.event.client_payload.batch_id }}
+          BASE_RECEIPT_JSON: ${{ toJSON(github.event.client_payload.receipt) }}
+          PATCH_JSON: ${{ toJSON(github.event.client_payload.patch) }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          batch_id = os.environ["BATCH_ID"].strip()
+          if not batch_id or "/" in batch_id or "\\" in batch_id:
+              raise SystemExit("invalid batch_id")
+          base = json.loads(os.environ["BASE_RECEIPT_JSON"])
+          patch = json.loads(os.environ["PATCH_JSON"])
+          root = Path("jobs/batches") / batch_id
+          root.mkdir(parents=True, exist_ok=True)
+          (root / "base_receipt.json").write_text(json.dumps(base, ensure_ascii=False), encoding="utf-8")
+          (root / "patch.json").write_text(json.dumps(patch, ensure_ascii=False), encoding="utf-8")
+          PY
+          python3 apply_batch_receipt_callback.py \
+            --receipt "jobs/batches/${BATCH_ID}/batch_receipt.json" \
+            --base-json "jobs/batches/${BATCH_ID}/base_receipt.json" \
+            --patch-json "jobs/batches/${BATCH_ID}/patch.json"
+          rm -f "jobs/batches/${BATCH_ID}/base_receipt.json" "jobs/batches/${BATCH_ID}/patch.json"
+      - name: Upload updated batch receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: batch-receipt-${{ github.event.client_payload.batch_id }}-${{ github.run_id }}
+          path: jobs/batches/${{ github.event.client_payload.batch_id }}/batch_receipt.json
+          retention-days: 30
+          if-no-files-found: error
+      - name: Publish receipt summary
+        run: cat "jobs/batches/${{ github.event.client_payload.batch_id }}/batch_receipt.json" >> "$GITHUB_STEP_SUMMARY"
