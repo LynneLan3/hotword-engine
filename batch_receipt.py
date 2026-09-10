@@ -185,6 +185,17 @@ def _has_indexing_evidence(receipt: dict[str, Any]) -> bool:
     )
 
 
+def _merge_section(current: dict[str, Any], update: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(current or {})
+    for key, value in update.items():
+        if isinstance(value, list):
+            values = list(merged.get(key) or []) + value
+            merged[key] = list(dict.fromkeys(item for item in values if item not in (None, "")))
+        elif value not in (None, "", "NOT_RUN"):
+            merged[key] = value
+    return merged
+
+
 def advance_receipt(receipt: dict[str, Any], update: dict[str, Any]) -> dict[str, Any]:
     """Apply one evidence-backed lifecycle transition to an existing receipt."""
     if not isinstance(receipt, dict) or not isinstance(update, dict):
@@ -207,15 +218,25 @@ def advance_receipt(receipt: dict[str, Any], update: dict[str, Any]) -> dict[str
         ("DEPLOYMENT_PENDING", "DEPLOYED"),
         ("DEPLOYED", "INDEXING_CHECKED"),
     }
-    if target != current and target != "FAILED" and (current, target) not in allowed:
+    stage_order = {stage: index for index, stage in enumerate(LIFECYCLE_STAGES)}
+    current_rank = stage_order.get(current, -1)
+    target_rank = stage_order.get(target, -1)
+    out_of_order = (
+        target != current
+        and target != "FAILED"
+        and current_rank >= 0
+        and target_rank >= 0
+        and target_rank < current_rank
+    )
+    if target != current and target != "FAILED" and not out_of_order and (current, target) not in allowed:
         raise BatchReceiptTransitionError(f"invalid lifecycle transition: {current} -> {target}")
 
     merged = dict(receipt)
     for section in ("implementation", "git", "deployment", "indexing", "links"):
         if isinstance(update.get(section), dict):
-            merged[section] = {**(merged.get(section) or {}), **update[section]}
-    merged["status"] = target
-    merged["stage"] = target
+            merged[section] = _merge_section(merged.get(section) or {}, update[section])
+    merged["status"] = current if out_of_order else target
+    merged["stage"] = current if out_of_order else target
     if target == "IMPLEMENTED" and not _has_implementation_evidence(merged):
         raise BatchReceiptTransitionError("IMPLEMENTED requires changed_files, canonical_urls, and action evidence")
     if target == "DEPLOYED" and not (_has_implementation_evidence(merged) and _has_deployment_evidence(merged)):
@@ -243,6 +264,7 @@ def human_summary(receipt: dict[str, Any]) -> str:
     site = str((jobs[0] if jobs else {}).get("site") or receipt.get("implementation", {}).get("site") or "UNKNOWN")
     evidence = receipt.get("evidence") or {}
     links = receipt.get("links") or {}
+    status = str(receipt.get("status") or "").upper()
     if str(receipt.get("status") or "").upper() in {"DEPLOYED", "INDEXING_CHECKED"} and _has_implementation_evidence(receipt) and _has_deployment_evidence(receipt):
         implementation = receipt.get("implementation") or {}
         indexing = receipt.get("indexing") or {}
@@ -265,6 +287,30 @@ def human_summary(receipt: dict[str, Any]) -> str:
             f"GitHub Run: {links.get('scheduler_run') or 'NOT_AVAILABLE'}",
         ]
         return "\n".join(lines)
+    if status in {"IMPLEMENTED", "DEPLOYMENT_PENDING"} and _has_implementation_evidence(receipt):
+        return "\n".join(
+            [
+                f"CONTENT IMPLEMENTED {receipt.get('batch_id')}",
+                f"Site: {site}",
+                f"Result: {status}",
+                "Production: NOT_RUN" if status == "IMPLEMENTED" else f"Production: {(receipt.get('deployment') or {}).get('status') or 'PENDING'}",
+                f"Receipt: {links.get('receipt')}",
+                f"GitHub Run: {links.get('scheduler_run') or 'NOT_AVAILABLE'}",
+            ]
+        )
+    if status == "IMPLEMENTATION_PENDING":
+        return "\n".join(
+            [
+                f"RESEARCH BATCH {receipt.get('batch_id')}",
+                f"Site: {site}",
+                "Result: IMPLEMENTATION_PENDING",
+                f"Evidence PASS: {evidence.get('PASS', 0)}",
+                "Implementation: PENDING",
+                "Production: NOT_RUN",
+                f"Receipt: {links.get('receipt')}",
+                f"GitHub Run: {links.get('scheduler_run') or 'NOT_AVAILABLE'}",
+            ]
+        )
     return "\n".join(
         [
             f"RESEARCH BATCH {receipt.get('batch_id')}",

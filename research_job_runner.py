@@ -241,6 +241,11 @@ def build_callback_body(
     status_enum = str(status.get("status") or "").strip().upper()
     research_type = str(status.get("research_type") or "").strip().upper()
     batch_id = str(status.get("batch_id") or (job or {}).get("batch_id") or "").strip()
+    scheduler_run_id = str(os.environ.get("GITHUB_RUN_ID") or "").strip()
+    scheduler_run_url = ""
+    if scheduler_run_id:
+        repository = str(os.environ.get("GITHUB_REPOSITORY") or "LynneLan3/hotword-engine").strip()
+        scheduler_run_url = f"https://github.com/{repository}/actions/runs/{scheduler_run_id}"
     if status_enum == "FAILED":
         body = {
             "job_id": job_id,
@@ -251,6 +256,9 @@ def build_callback_body(
             body["research_type"] = research_type
         if batch_id:
             body["batch_id"] = batch_id
+        if scheduler_run_id:
+            body["scheduler_run_id"] = scheduler_run_id
+            body["scheduler_run_url"] = scheduler_run_url
         return body
     if status_enum == "WATCH":
         # No evidence payload — Apps Script must not write「研究审核」.
@@ -270,6 +278,9 @@ def build_callback_body(
             body["research_type"] = research_type
         if batch_id:
             body["batch_id"] = batch_id
+        if scheduler_run_id:
+            body["scheduler_run_id"] = scheduler_run_id
+            body["scheduler_run_url"] = scheduler_run_url
         return body
     body: dict[str, Any] = {
         "job_id": job_id,
@@ -284,6 +295,9 @@ def build_callback_body(
         body["research_type"] = research_type
     if batch_id:
         body["batch_id"] = batch_id
+    if scheduler_run_id:
+        body["scheduler_run_id"] = scheduler_run_id
+        body["scheduler_run_url"] = scheduler_run_url
     if job:
         body["content_decision"] = build_content_decision(job, result or {})
     return body
