@@ -190,6 +190,41 @@ Tiel and other Shells reset. Save transfer is not the same as beta rewards.
 
 ACTION_RESEARCH_PAGE_OPTIMIZATION = "PAGE_OPTIMIZATION_RESEARCH"
 _ACTIVE_RESEARCH_TYPE = ""
+FRESHNESS_UPDATE_MARKERS = (
+    "patch",
+    "update",
+    "release",
+    "hotfix",
+    "changed",
+    "newer",
+)
+FRESHNESS_IMPACT_MARKERS = (
+    "crash",
+    "fix",
+    "optimisation",
+    "optimization",
+    "bug",
+    "performance",
+    "status",
+)
+FRESHNESS_GENERIC_TERMS = {
+    "official",
+    "update",
+    "patch",
+    "release",
+    "hotfix",
+    "changed",
+    "newer",
+    "current",
+    "live",
+    "page",
+    "latest",
+    "still",
+    "fact",
+    "announces",
+    "several",
+    "officially",
+}
 LEGACY_BETA_INTENT_MARKERS = (
     "beta",
     "carry over",
@@ -978,6 +1013,207 @@ def http_post_json(url: str, payload: dict[str, Any], timeout: int = 30) -> dict
     )
     with urllib.request.urlopen(req, timeout=timeout, context=SSL_CTX) as resp:
         return json.loads(resp.read().decode("utf-8"))
+
+
+def freshness_signal_indicates_update(signal: str) -> bool:
+    n = norm(signal)
+    return bool(n) and any(marker in n for marker in FRESHNESS_UPDATE_MARKERS)
+
+
+def _date_tuple(year: int, month: int, day: int) -> tuple[int, int, int] | None:
+    try:
+        datetime(year, month, day)
+    except ValueError:
+        return None
+    return year, month, day
+
+
+def _date_tuple_from_value(value: Any, default_year: int | None = None) -> tuple[int, int, int] | None:
+    if isinstance(value, (int, float)) and value > 0:
+        dt = datetime.fromtimestamp(value, tz=timezone.utc)
+        return dt.year, dt.month, dt.day
+    text = str(value or "").strip()
+    iso = re.search(r"\b(20\d{2})[-/](\d{1,2})[-/](\d{1,2})\b", text)
+    if iso:
+        return _date_tuple(int(iso.group(1)), int(iso.group(2)), int(iso.group(3)))
+    month = re.search(
+        r"\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
+        r"Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|"
+        r"Nov(?:ember)?|Dec(?:ember)?)\.?\s+(\d{1,2})(?:,?\s+(20\d{2}))?\b",
+        text,
+        re.IGNORECASE,
+    )
+    if not month or default_year is None and not month.group(3):
+        return None
+    months = {
+        "jan": 1, "january": 1, "feb": 2, "february": 2,
+        "mar": 3, "march": 3, "apr": 4, "april": 4,
+        "may": 5, "jun": 6, "june": 6, "jul": 7, "july": 7,
+        "aug": 8, "august": 8, "sep": 9, "sept": 9, "september": 9,
+        "oct": 10, "october": 10, "nov": 11, "november": 11,
+        "dec": 12, "december": 12,
+    }
+    year = int(month.group(3) or default_year)
+    return _date_tuple(year, months[month.group(1).lower().rstrip(".")], int(month.group(2)))
+
+
+def _latest_reference_date(text: str, default_year: int | None = None) -> tuple[int, int, int] | None:
+    dates = []
+    for match in re.finditer(r"\b20\d{2}[-/]\d{1,2}[-/]\d{1,2}\b", text or ""):
+        parsed = _date_tuple_from_value(match.group(0), default_year)
+        if parsed:
+            dates.append(parsed)
+    for match in re.finditer(
+        r"\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
+        r"Jul(?:y)?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|"
+        r"Nov(?:ember)?|Dec(?:ember)?)\.?\s+\d{1,2}(?:,?\s+20\d{2})?\b",
+        text or "",
+        re.IGNORECASE,
+    ):
+        parsed = _date_tuple_from_value(match.group(0), default_year)
+        if parsed:
+            dates.append(parsed)
+    return max(dates) if dates else None
+
+
+def _official_news_url(url: str, appid: str) -> bool:
+    parsed = urllib.parse.urlparse(url)
+    host = parsed.netloc.lower().split(":", 1)[0]
+    path = parsed.path.rstrip("/")
+    return (
+        host.endswith("steamcommunity.com")
+        and (
+            f"/app/{appid}/news/" in path
+            or f"/games/{appid}/announcements/" in path
+        )
+    ) or (
+        host.endswith("steampowered.com")
+        and f"/news/app/{appid}" in path
+    )
+
+
+def _official_news_text(value: Any) -> str:
+    text = strip_html(str(value or ""))
+    return re.sub(r"\[[^\]]+\]", " ", text).strip()
+
+
+def _freshness_news_matches(text: str, topic: str, signal: str) -> bool:
+    n = norm(text)
+    if not any(marker in n for marker in FRESHNESS_IMPACT_MARKERS):
+        return False
+    target_terms = {
+        token for token in tokens(f"{topic} {signal}")
+        if token not in FRESHNESS_GENERIC_TERMS and not token.isdigit()
+    }
+    return bool(target_terms & set(n.split()))
+
+
+def collect_first_party_freshness(
+    game: str,
+    topic: str,
+    signal: str,
+    page_text: str,
+    appids: list[str],
+) -> dict[str, Any]:
+    """Treat freshnessSignal as a lead; verify it against official Steam news."""
+    base: dict[str, Any] = {
+        "signal": signal,
+        "status": "NOT_REQUESTED" if not signal else "UNVERIFIED",
+        "evidence": [],
+        "evidence_summary": "",
+        "recommended_sections": [],
+    }
+    if not signal:
+        return base
+    if not freshness_signal_indicates_update(signal):
+        base["evidence_summary"] = "Freshness signal unverified: it did not identify a patch, update, release, or changed fact."
+        return base
+    if not appids:
+        base["evidence_summary"] = "Freshness signal unverified: no confirmed first-party Steam source is configured for this game."
+        return base
+
+    candidates: list[dict[str, Any]] = []
+    for appid in appids:
+        api_url = "https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?" + urllib.parse.urlencode(
+            {"appid": appid, "count": 20, "maxlength": 10000}
+        )
+        try:
+            raw, _ = http_get(api_url, {"Accept": "application/json"})
+            payload = json.loads(raw.decode("utf-8", "ignore"))
+        except Exception as exc:
+            log(f"  Steam official news failed ({appid}): {exc}")
+            continue
+        items = ((payload.get("appnews") or {}).get("newsitems") or []) if isinstance(payload, dict) else []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            title = _official_news_text(item.get("title"))
+            contents = _official_news_text(item.get("contents"))
+            url = str(item.get("url") or "").strip()
+            if not url or not _official_news_url(url, appid):
+                continue
+            text = f"{title} {contents}".strip()
+            if not _freshness_news_matches(text, topic, signal):
+                continue
+            published = _date_tuple_from_value(item.get("date")) or _latest_reference_date(text)
+            if not published:
+                continue
+            candidates.append(
+                {
+                    "title": title or "Steam official update",
+                    "url": url,
+                    "text": contents or title,
+                    "published": published,
+                }
+            )
+
+    if not candidates:
+        base["evidence_summary"] = "Freshness signal unverified: no matching official Steam update was found."
+        return base
+
+    default_year = max(item["published"][0] for item in candidates)
+    page_date = _latest_reference_date(page_text, default_year)
+    newer = [item for item in candidates if page_date and item["published"] > page_date]
+    if not newer:
+        base["evidence_summary"] = "Freshness signal unverified: matching official evidence was found, but it could not be verified as newer than the current page."
+        return base
+
+    newer.sort(key=lambda item: item["published"], reverse=True)
+    verified: list[dict[str, Any]] = []
+    for item in newer:
+        year, month, day = item["published"]
+        date_text = f"{year:04d}-{month:02d}-{day:02d}"
+        verified.append(
+            {
+                "source": "steam_official",
+                "evidence_type": "first_party_freshness",
+                "title": item["title"],
+                "url": item["url"],
+                "evidence": item["text"][:600],
+                "excerpt": item["text"][:280],
+                "published_at": date_text,
+                "fact_date": date_text,
+                "player_question": "",
+                "discovered_topic": "official freshness",
+                "relevance": 1.0,
+            }
+        )
+    summary = "Verified first-party Steam update dated " + verified[0]["fact_date"] + ": " + verified[0]["evidence"]
+    section = "Latest official update facts"
+    if any(marker in norm(summary) for marker in ("crash", "fix", "optimisation", "optimization")):
+        section = "Latest update / crash fixes and optimisations"
+    return {
+        "signal": signal,
+        "status": "VERIFIED",
+        "page_date": "-".join(str(part) for part in page_date),
+        "evidence": verified,
+        "evidence_summary": summary,
+        "recommended_sections": [section],
+        "decision_reason": (
+            f"Existing page fact is stale ({page_date[0]:04d}-{page_date[1]:02d}-{page_date[2]:02d}); "
+            f"verified newer official fact is available ({verified[0]['fact_date']})."
+        ),
+    }
 
 
 def evidence_item(
@@ -1892,13 +2128,35 @@ def recommend(
     game: str = "",
     research_type: str = "",
     topic_relevant_evidence_n: int | None = None,
+    freshness: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     page_mode = is_page_optimization_research(research_type)
     relevant_n = evidence_n if topic_relevant_evidence_n is None else topic_relevant_evidence_n
+    freshness_verified = page_mode and isinstance(freshness, dict) and freshness.get("status") == "VERIFIED"
+    freshness_unverified = page_mode and isinstance(freshness, dict) and freshness.get("status") == "UNVERIFIED"
+    if freshness_verified:
+        return {
+            "action": "EXPAND_EXISTING",
+            "reason": str(freshness.get("decision_reason") or "Verified newer first-party facts require updating the existing page."),
+            "content_gaps": [
+                {
+                    "player_question": "What changed in the latest official update?",
+                    "discovered_topic": "official freshness",
+                    "evidence_count": len(freshness.get("evidence") or []),
+                    "why_missing": "The existing page's latest-update fact is stale.",
+                    "kind": "related",
+                }
+            ],
+            "related_gap_evidence": len(freshness.get("evidence") or []),
+            "orthogonal_gap_evidence": 0,
+        }
     if page_mode and evidence_n >= 3 and relevant_n < 3:
+        reason = "Insufficient topic-specific evidence"
+        if freshness_unverified:
+            reason += " Freshness signal unverified; no reliable newer first-party fact was confirmed."
         return {
             "action": "WATCH",
-            "reason": "Insufficient topic-specific evidence",
+            "reason": reason,
             "content_gaps": [],
             "related_gap_evidence": 0,
             "orthogonal_gap_evidence": 0,
@@ -1939,6 +2197,8 @@ def recommend(
     if evidence_n < 3:
         action = "WATCH"
         reason = "Too few on-topic evidence items to justify a content change."
+        if freshness_unverified:
+            reason += " Freshness signal unverified; no reliable newer first-party fact was confirmed."
     elif related_gap_n >= 2:
         action = "EXPAND_EXISTING"
         if is_mortal_shell_ii(game) and not page_mode:
@@ -1964,6 +2224,9 @@ def recommend(
             if is_mortal_shell_ii(game) and not page_mode
             else "There are unanswered follow-ups adjacent to the existing page."
         )
+
+    if freshness_unverified and "Freshness signal unverified" not in reason:
+        reason += " Freshness signal unverified; no reliable newer first-party fact was confirmed."
 
     return {
         "action": action,
@@ -2093,6 +2356,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         related_queries = [str(q).strip() for q in related_raw if str(q).strip()]
     context_raw = getattr(args, "context_queries", None) or []
     context_queries = [str(q).strip() for q in context_raw if str(q).strip()]
+    freshness_signal = (
+        str(getattr(args, "freshness_signal", None) or "").strip()
+        if is_page_optimization_research(research_type)
+        else ""
+    )
     for query in context_queries:
         if query not in related_queries:
             related_queries.append(query)
@@ -2176,6 +2444,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         return_status=True,
     )
     clusters = cluster_questions(evidence)
+    freshness = collect_first_party_freshness(
+        game,
+        topic,
+        freshness_signal,
+        page_text,
+        appids,
+    ) if is_page_optimization_research(research_type) else None
+    all_evidence = evidence + list((freshness or {}).get("evidence") or [])
     rec = recommend(
         clusters,
         page_text,
@@ -2183,6 +2459,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         game,
         research_type,
         topic_relevant_evidence_n=topic_relevant_evidence_n,
+        freshness=freshness,
     )
 
     source_counts = {
@@ -2206,21 +2483,26 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         },
         "run_at": now_iso(),
         "source_counts": source_counts,
-        "evidence": evidence,
+        "evidence": all_evidence,
         "player_questions": clusters,
         "most_asked_questions": most_asked,
         "content_gaps": rec["content_gaps"],
         "recommendation": recommendation,
         "candidate_evidence_count": candidate_evidence_n,
+        "community_evidence_count": len(evidence),
         "topic_relevant_evidence_count": topic_relevant_evidence_n,
         "page_fetch_status": page_fetch_status,
         "review_summary": make_review_summary(
             recommendation=recommendation,
-            evidence=evidence,
+            evidence=all_evidence,
             most_asked=most_asked,
         ),
         "filtered_examples": FILTER_EXAMPLES[:8],
     }
+    if freshness is not None:
+        result["input"]["freshness_signal"] = freshness_signal
+        result["freshness"] = freshness
+        result["evidence_summary"] = str(freshness.get("evidence_summary") or "")
     return result
 
 

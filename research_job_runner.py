@@ -151,6 +151,8 @@ def build_content_decision(job: dict[str, Any], result: dict[str, Any]) -> dict[
     recommendation_action = str(recommendation.get("action") or "").strip().upper()
     evidence = list(result.get("evidence") or []) if isinstance(result.get("evidence"), list) else []
     evidence_count = len(evidence)
+    freshness = result.get("freshness") if isinstance(result.get("freshness"), dict) else {}
+    freshness_verified = freshness.get("status") == "VERIFIED"
     topic_relevant_count = int(
         result.get("topic_relevant_evidence_count") or evidence_count
     )
@@ -162,7 +164,11 @@ def build_content_decision(job: dict[str, Any], result: dict[str, Any]) -> dict[
         else:
             primary = "WATCH"
     elif research_type == "PAGE_OPTIMIZATION_RESEARCH":
-        primary = "WATCH" if recommendation_action == "WATCH" or evidence_count < 3 else "EXPAND_EXISTING"
+        primary = (
+            "EXPAND_EXISTING"
+            if freshness_verified
+            else "WATCH" if recommendation_action == "WATCH" or evidence_count < 3 else "EXPAND_EXISTING"
+        )
     elif research_type == "CANNIBALIZATION_RESEARCH":
         primary = "WATCH" if evidence_count < 3 else "KEEP_BOTH"
     else:
@@ -185,6 +191,11 @@ def build_content_decision(job: dict[str, Any], result: dict[str, Any]) -> dict[
         section = str(gap.get("discovered_topic") or gap.get("player_question") or "").strip()
         if section and section not in sections:
             sections.append(section)
+    if freshness_verified:
+        for section in freshness.get("recommended_sections") or []:
+            section = str(section or "").strip()
+            if section and section not in sections:
+                sections.append(section)
     reason = str(recommendation.get("reason") or "").strip()
     if research_type == "CANNIBALIZATION_RESEARCH":
         pages = _as_list(context.get("competingPages"))
@@ -195,13 +206,17 @@ def build_content_decision(job: dict[str, Any], result: dict[str, Any]) -> dict[
         confidence = "LOW"
     else:
         confidence = "HIGH" if evidence_count >= 5 and primary != "WATCH" else "MEDIUM" if evidence_count >= 2 else "LOW"
+    evidence_summary = str(result.get("review_summary") or reason).strip()
+    freshness_summary = str(freshness.get("evidence_summary") or "").strip()
+    if freshness_summary and freshness_summary not in evidence_summary:
+        evidence_summary = (evidence_summary + " " if evidence_summary else "") + freshness_summary
     return {
         "research_type": research_type,
         "source_action": str(job.get("source_action") or context.get("sourceAction") or "").strip(),
         "primary_decision": primary,
         "secondary_actions": secondary,
         "decision_reason": reason,
-        "evidence_summary": str(result.get("review_summary") or reason).strip(),
+        "evidence_summary": evidence_summary,
         "evidence_count": evidence_count,
         "target_queries": target_queries,
         "recommended_sections": sections,
@@ -444,6 +459,13 @@ def run_job(job_path: Path) -> dict[str, Any]:
         research_type = str(job.get("research_type") or "").strip().upper()
         action_context = job.get("action_context") if isinstance(job.get("action_context"), dict) else {}
         context_queries = _context_queries(action_context, research_type)
+        freshness_signal = ""
+        if research_type == "PAGE_OPTIMIZATION_RESEARCH":
+            freshness_signal = str(
+                action_context.get("freshnessSignal")
+                or action_context.get("freshness_signal")
+                or ""
+            ).strip()
         args = argparse.Namespace(
             game=job["game"],
             topic=job["topic"],
@@ -452,6 +474,7 @@ def run_job(job_path: Path) -> dict[str, Any]:
             source_query=str(job.get("source_query") or "").strip(),
             related_queries=list(job.get("related_queries") or []),
             context_queries=context_queries,
+            freshness_signal=freshness_signal,
             research_type=research_type,
             out=str(result_path),
             reuse=None,
