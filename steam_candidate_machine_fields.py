@@ -140,7 +140,19 @@ def compute_social_verdict(social: dict[str, Any]) -> tuple[str, str]:
 def compute_serp_competition(preflight_result: dict[str, Any] | None) -> str:
     preflight = _as_dict(preflight_result)
     serp = _as_dict(preflight.get("serp"))
+    has_problem_queries = _count(serp.get("problem_query_count")) > 0
     dedicated = len(serp.get("dedicated_guide_domains") or [])
+    if has_problem_queries:
+        dedicated = len(serp.get("competition_dedicated_guide_domains") or [])
+        densities = [
+            _text(value).upper()
+            for value in serp.get("problem_query_guide_densities") or []
+        ]
+        if serp.get("problem_queries_all_saturated"):
+            return "高"
+        if dedicated >= 1 or "MODERATE" in densities or "HIGH" in densities:
+            return "中"
+        return "低" if serp else "未检查"
     densities = [
         _text(serp.get("brand_serp_guide_density")).upper(),
         _text(serp.get("guide_query_guide_density")).upper(),

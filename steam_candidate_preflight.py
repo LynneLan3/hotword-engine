@@ -228,6 +228,90 @@ def summarize_serp_query(game_name: str, query: str, payload: dict[str, Any]) ->
     }
 
 
+def _social_problem_queries(social: dict[str, Any], limit: int = 2) -> list[dict[str, Any]]:
+    try:
+        evidence_count = int(social.get("evidence_count") or 0)
+    except (TypeError, ValueError):
+        evidence_count = 0
+    if _text(social.get("status")).upper() != "AVAILABLE" or evidence_count <= 0:
+        return []
+    selected: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for cluster in social.get("top_clusters") or []:
+        if not isinstance(cluster, dict):
+            continue
+        source_cluster = {
+            "topic_key": cluster.get("topic_key"),
+            "topic": cluster.get("topic"),
+            "intent": cluster.get("intent"),
+            "evidence_count": cluster.get("evidence_count", 0),
+            "source_families": cluster.get("source_families") or [],
+            "providers": cluster.get("providers") or [],
+            "evidence": cluster.get("evidence") or [],
+        }
+        for question in cluster.get("representative_questions") or []:
+            text = _text(question.get("question") or question.get("text")) if isinstance(question, dict) else _text(question)
+            key = normalize_game_name(text)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            selected.append({"query": text, "question": text, "query_type": "PROBLEM", "source_cluster": source_cluster})
+            if len(selected) >= limit:
+                return selected
+    return selected
+
+
+def build_launch_topics(
+    social: dict[str, Any], preflight_result: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Bind actual Social questions to their already-run preflight SERP summaries."""
+    problem_specs = _social_problem_queries(social)
+    if not problem_specs:
+        return []
+    serp = _as_dict(preflight_result.get("serp"))
+    queries = serp.get("queries") if isinstance(serp.get("queries"), list) else []
+    topics: list[dict[str, Any]] = []
+    problem_queries = [query for query in queries if isinstance(query, dict) and query.get("query_type") == "PROBLEM"]
+    for spec, query in zip(problem_specs, problem_queries):
+        status = _text(query.get("status")).upper()
+        relevant_count = int(query.get("relevant_count") or 0)
+        if status not in {"SUPPORTED", "AVAILABLE"}:
+            candidate_status = "UNAVAILABLE"
+        elif relevant_count > 0:
+            candidate_status = "CANDIDATE"
+        else:
+            candidate_status = "NO_MATCH"
+        source_cluster = query.get("source_cluster") or spec.get("source_cluster")
+        source_cluster = source_cluster if isinstance(source_cluster, dict) else {}
+        topics.append(
+            {
+                "query": _text(query.get("query") or spec.get("query")),
+                "question": _text(query.get("question") or spec.get("question")),
+                "source": "SOCIAL",
+                "topic": _text(source_cluster.get("topic") or source_cluster.get("topic_key")),
+                "source_cluster": source_cluster,
+                "evidence": source_cluster.get("evidence") or [],
+                "serp_summary": {
+                    "status": status,
+                    "organic_count": query.get("organic_count", 0),
+                    "relevant_count": relevant_count,
+                    "guide_count": query.get("guide_count", 0),
+                    "guide_density": query.get("guide_density", "LOW"),
+                    "dedicated_guide_domains": query.get("dedicated_guide_domains") or [],
+                    "result_classifications": query.get("result_classifications") or [],
+                },
+                "launch_candidate_status": candidate_status,
+            }
+        )
+    return topics
+
+
+def _competition_saturated(query: dict[str, Any]) -> bool:
+    domains = query.get("dedicated_guide_domains") or []
+    density = _text(query.get("guide_density")).upper()
+    return len(domains) >= DEDICATED_DOMAIN_REJECT_MIN or bool(domains) and density == "HIGH"
+
+
 def _autocomplete_summary(game_name: str, runs: list[dict[str, Any]]) -> dict[str, Any]:
     items: list[dict[str, Any]] = []
     errors: list[str] = []
@@ -502,16 +586,34 @@ def evaluate_preflight(
     """Pure verdict builder used by replay and provider-backed execution."""
     game_name = _text(job.get("game_name"))
     autocomplete = _autocomplete_summary(game_name, autocomplete_runs)
+    problem_queries = [
+        query for query in serp_queries if _text(query.get("query_type")).upper() == "PROBLEM"
+    ]
     dedicated_domains = sorted(
         {domain for query in serp_queries for domain in query.get("dedicated_guide_domains", [])}
     )
-    guide_queries = [query for query in serp_queries if _GUIDE_RE.search(_text(query.get("query")))]
-    wiki_queries = [query for query in serp_queries if "wiki" in normalize_game_name(query.get("query"))]
+    competition_queries = problem_queries or serp_queries
+    competition_domains = sorted(
+        {
+            domain
+            for query in competition_queries
+            for domain in query.get("dedicated_guide_domains", [])
+        }
+    )
+    problem_queries_saturated = [
+        _competition_saturated(query) for query in problem_queries
+    ]
+    problem_queries_all_saturated = bool(problem_queries) and all(problem_queries_saturated)
+    competition_high_density = (
+        all(problem_queries_saturated)
+        if problem_queries
+        else any(_text(query.get("guide_density")).upper() == "HIGH" for query in serp_queries)
+    )
     all_results = sum(int(query.get("organic_count") or 0) for query in serp_queries)
     relevant_results = sum(int(query.get("relevant_count") or 0) for query in serp_queries)
     irrelevant_results = sum(int(query.get("irrelevant_count") or 0) for query in serp_queries)
     guide_counts = [int(query.get("guide_count") or 0) for query in serp_queries]
-    high_density = any(_text(query.get("guide_density")).upper() == "HIGH" for query in serp_queries)
+    high_density = competition_high_density
     serp_available = any(_text(query.get("status")).upper() in {"SUPPORTED", "AVAILABLE"} for query in serp_queries)
     autocomplete_available = autocomplete["status"] == "AVAILABLE"
     provider_errors = list(autocomplete.get("errors") or []) + [
@@ -525,9 +627,18 @@ def evaluate_preflight(
     )
     if contamination:
         verdict, reason = AUTO_REJECT, "ENTITY_SEARCH_INTENT_CONTAMINATION"
-    elif len(dedicated_domains) >= DEDICATED_DOMAIN_REJECT_MIN:
+    elif (
+        problem_queries_all_saturated
+        or not problem_queries
+        and len(dedicated_domains) >= DEDICATED_DOMAIN_REJECT_MIN
+    ):
         verdict, reason = AUTO_REJECT, "COMPETITION_SATURATED_DEDICATED_DOMAINS"
-    elif dedicated_domains and high_density:
+    elif (
+        problem_queries_all_saturated
+        or not problem_queries
+        and dedicated_domains
+        and high_density
+    ):
         verdict, reason = AUTO_REJECT, "COMPETITION_SATURATED_HIGH_GUIDE_DENSITY"
     elif not (autocomplete_available or serp_available):
         verdict, reason = PREFLIGHT_ERROR, "ALL_PREFLIGHT_PROVIDERS_UNAVAILABLE"
@@ -562,9 +673,15 @@ def evaluate_preflight(
             "irrelevant_count": irrelevant_results,
             "dedicated_guide_domain_count": len(dedicated_domains),
             "dedicated_guide_domains": dedicated_domains,
+            "competition_dedicated_guide_domains": competition_domains,
+            "problem_query_count": len(problem_queries),
+            "problem_queries_saturated_count": sum(problem_queries_saturated),
+            "problem_queries_all_saturated": problem_queries_all_saturated,
             "brand_serp_guide_density": _density(guide_counts[0] if guide_counts else 0),
-            "guide_query_guide_density": _density(guide_counts[1] if len(guide_counts) > 1 else 0),
-            "wiki_query_guide_density": _density(guide_counts[2] if len(guide_counts) > 2 else 0),
+            "problem_query_guide_densities": [
+                _text(query.get("guide_density")).upper() or "LOW"
+                for query in problem_queries
+            ],
             "high_guide_density": high_density,
         },
         "entity": {
@@ -577,6 +694,9 @@ def evaluate_preflight(
         "searchapi_queries_reused": sum(1 for query in serp_queries if query.get("cache_reused")),
         "social_supporting_evidence": _as_dict(job.get("social_supporting_evidence")),
     }
+    result["launch_topics"] = build_launch_topics(
+        _as_dict(job.get("social_supporting_evidence")), result
+    )
     return result
 
 
@@ -653,13 +773,13 @@ def run_preflight(
             result["cache_reused"] = reused
             autocomplete_runs.append(result)
 
-    query_names = [game_name, f"{game_name} guide", f"{game_name} wiki"][: max(1, min(max_serp_queries, DEFAULT_MAX_SERP_QUERIES))]
+    social = _as_dict(job.get("social_supporting_evidence"))
+    problem_specs = _social_problem_queries(social)
+    query_specs = [{"query": game_name, "query_type": "BRAND"}] + problem_specs
+    query_specs = query_specs[: max(1, min(max_serp_queries, DEFAULT_MAX_SERP_QUERIES))]
     serp_queries: list[dict[str, Any]] = []
-    for index, query in enumerate(query_names):
-        if index > 0 and serp_queries:
-            first = serp_queries[0]
-            if len(first.get("dedicated_guide_domains", [])) >= DEDICATED_DOMAIN_REJECT_MIN or first.get("guide_density") == "HIGH":
-                break
+    for spec in query_specs:
+        query = _text(spec.get("query"))
         raw, reused = _cached_probe(
             cache_dir=cache_dir,
             app_id=_text(job.get("steam_app_id")),
@@ -669,12 +789,22 @@ def run_preflight(
             probe=(lambda query=query: serp_fn(query) if serp_fn else _default_serp(query, game_name, provider_fetch_fn)),
         )
         summary = summarize_serp_query(game_name, query, raw)
+        summary["query_type"] = spec.get("query_type")
+        summary["question"] = spec.get("question")
+        if spec.get("source_cluster"):
+            summary["source_cluster"] = spec["source_cluster"]
         summary["cache_reused"] = reused
         raw_items = raw.get("items") if isinstance(raw, dict) else []
         summary["_items"] = raw_items if isinstance(raw_items, list) else []
         serp_queries.append(summary)
 
-    return evaluate_preflight(job, autocomplete_runs=autocomplete_runs, serp_queries=serp_queries)
+    checked_at = now.isoformat() if isinstance(now, (date, datetime)) else None
+    return evaluate_preflight(
+        job,
+        autocomplete_runs=autocomplete_runs,
+        serp_queries=serp_queries,
+        checked_at=checked_at,
+    )
 
 
 def build_preflight_result(*args: Any, **kwargs: Any) -> dict[str, Any]:

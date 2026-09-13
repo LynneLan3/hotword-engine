@@ -50,6 +50,14 @@ def _enrich_research_result(
     enriched["manual_signals"] = manual_signals
     enriched["preflight"] = preflight_result
     enriched["machine_fields"] = machine
+    enriched["launch_topics"] = (
+        preflight_result.get("launch_topics")
+        if isinstance(preflight_result.get("launch_topics"), list)
+        else preflight.build_launch_topics(
+            enriched.get("social") if isinstance(enriched.get("social"), dict) else {},
+            preflight_result,
+        )
+    )
     return enriched
 
 
@@ -255,7 +263,6 @@ def run_job(
             dry_run=dry_run,
         )
 
-    run_research = research_fn or m7a.run_candidate_research
     result: dict[str, Any] | None = None
     reused_research = False
     if research_path.exists():
@@ -268,7 +275,15 @@ def run_job(
             reused_research = False
 
     if result is None:
-        result = run_research(job)
+        result = (
+            m7a.run_candidate_research(
+                job,
+                social_result=social,
+                preflight_result=preflight_result,
+            )
+            if research_fn is None
+            else research_fn(job)
+        )
         if not isinstance(result, dict):
             raise RuntimeError("M7A runner returned no research result")
         result["social"] = social

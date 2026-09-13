@@ -44,7 +44,10 @@ class SteamCandidatePreflightExecutorTests(unittest.TestCase):
             return {
                 "status": "AVAILABLE",
                 "evidence_count": 2,
-                "top_clusters": [{"topic": "Example Game puzzle"}],
+                "top_clusters": [{
+                    "topic": "Example Game puzzle",
+                    "representative_questions": ["How do I solve Example Game?", "Where is Example Game puzzle?"],
+                }],
             }
 
         def autocomplete_fn(_source: str, query: str) -> dict:
@@ -96,8 +99,9 @@ class SteamCandidatePreflightExecutorTests(unittest.TestCase):
         self.assertEqual(events, ["social", "preflight", "callback"])
         self.assertEqual(outcome["execution_status"], "COMPLETED")
         self.assertEqual(outcome["preflight_verdict"], preflight.MANUAL_REVIEW)
-        self.assertEqual(len(serp_queries), 3)
+        self.assertEqual(serp_queries, ["Example Game", "How do I solve Example Game?", "Where is Example Game puzzle?"])
         self.assertEqual(artifact["social"]["evidence_count"], 2)
+        self.assertEqual(len(artifact["launch_topics"]), 2)
         self.assertNotIn("token", outcome["callback_payload"])
         self.assertEqual(sent[0]["token"], "callback-secret")
         self.assertEqual(sent[0]["job_type"], "STEAM_CANDIDATE_RESEARCH")

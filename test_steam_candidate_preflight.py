@@ -18,10 +18,11 @@ from steam_candidate_preflight import (
 
 def _job(name: str, **state):
     release_date = state.pop("release_date", None)
+    social = state.pop("social", None)
     steam_signals = {"release_stage": state.pop("release_stage", "Released")}
     if release_date:
         steam_signals["release_date"] = release_date
-    return {
+    job = {
         "job_id": f"job-{name.lower().replace(' ', '-')}",
         "steam_app_id": "12345",
         "game_name": name,
@@ -29,6 +30,9 @@ def _job(name: str, **state):
         "steam_signals": steam_signals,
         "candidate_state": state,
     }
+    if social is not None:
+        job["social_supporting_evidence"] = social
+    return job
 
 
 def _autocomplete(name: str, *, guide: bool = True):
@@ -280,6 +284,7 @@ class PreflightRegressionTests(unittest.TestCase):
             _job("BOMBANANA!", release_stage="Upcoming", release_date="2026-09-02"),
             autocomplete_fn=_autocomplete("BOMBANANA!", guide=False),
             serp_fn=_serp("BOMBANANA!", []),
+            now=date(2026, 8, 25),
         )
         self.assertEqual(result["preflight_verdict"], WATCH)
         self.assertEqual(result["next_review_date"], "2026-09-03")
@@ -301,10 +306,108 @@ class PreflightRegressionTests(unittest.TestCase):
             job = _job("Example Game")
             first = run_preflight(job, autocomplete_fn=ac, serp_fn=serp, cache_dir=root, now=date(2026, 8, 25))
             second = run_preflight(job, autocomplete_fn=ac, serp_fn=serp, cache_dir=root, now=date(2026, 8, 25))
-        self.assertEqual(first["searchapi_queries_used"], 3)
+        self.assertEqual(first["searchapi_queries_used"], 1)
         self.assertEqual(first["searchapi_queries_reused"], 0)
-        self.assertEqual(second["searchapi_queries_reused"], 3)
-        self.assertEqual(len([call for call in calls if call[0] == "serp"]), 3)
+        self.assertEqual(second["searchapi_queries_reused"], 1)
+        self.assertEqual(len([call for call in calls if call[0] == "serp"]), 1)
+
+    def test_social_questions_select_zero_one_or_two_queries_in_order(self):
+        social = {
+            "status": "AVAILABLE",
+            "evidence_count": 4,
+            "top_clusters": [
+                {"topic": "Puzzle", "representative_questions": ["How puzzle 1?", "How puzzle 2?"]},
+                {"topic": "Build", "representative_questions": ["How build 3?"]},
+            ],
+        }
+        for questions, expected in (([], 1), (["How puzzle 1?"], 2), (["How puzzle 1?", "How puzzle 2?"], 3)):
+            with self.subTest(questions=questions):
+                calls: list[str] = []
+                job = _job(
+                    "Example Game",
+                    social={**social, "top_clusters": [{"topic": "Topic", "representative_questions": questions}]},
+                )
+                result = run_preflight(
+                    job,
+                    autocomplete_fn=_autocomplete("Example Game"),
+                    serp_fn=lambda query: calls.append(query) or {"status": "SUPPORTED", "items": []},
+                )
+                self.assertEqual(len(calls), expected)
+                self.assertEqual(calls, ["Example Game", *questions])
+                self.assertEqual(result["serp"]["query_count"], expected)
+
+    def test_brand_saturation_does_not_short_circuit_problem_serps(self):
+        calls: list[str] = []
+        social = {
+            "status": "AVAILABLE",
+            "evidence_count": 2,
+            "top_clusters": [{"topic": "Puzzle", "representative_questions": ["How puzzle 1?", "How puzzle 2?"]}],
+        }
+
+        def serp(query: str):
+            calls.append(query)
+            domains = ["examplegamewiki.com"] * 5 if query == "Example Game" else []
+            return _serp("Example Game", domains)(query)
+
+        result = run_preflight(
+            _job("Example Game", social=social),
+            autocomplete_fn=_autocomplete("Example Game"),
+            serp_fn=serp,
+        )
+        self.assertEqual(calls, ["Example Game", "How puzzle 1?", "How puzzle 2?"])
+        self.assertNotEqual(result["preflight_verdict"], AUTO_REJECT)
+
+    def test_all_problem_serps_saturated_preserves_rejection(self):
+        social = {
+            "status": "AVAILABLE",
+            "evidence_count": 2,
+            "top_clusters": [{"topic": "Puzzle", "representative_questions": ["How puzzle 1?", "How puzzle 2?"]}],
+        }
+
+        def serp(query: str):
+            domains = ["examplegameguide.com"] * 5
+            return _serp("Example Game", domains)(query)
+
+        result = run_preflight(
+            _job("Example Game", social=social),
+            autocomplete_fn=_autocomplete("Example Game"),
+            serp_fn=serp,
+        )
+        self.assertEqual(result["preflight_verdict"], AUTO_REJECT)
+        self.assertTrue(result["serp"]["problem_queries_all_saturated"])
+
+    def test_launch_topics_bind_social_evidence_and_serp_without_decision(self):
+        social = {
+            "status": "AVAILABLE",
+            "evidence_count": 2,
+            "top_clusters": [{
+                "topic_key": "puzzle",
+                "topic": "Puzzle help",
+                "representative_questions": ["How puzzle 1?"],
+                "providers": ["reddit"],
+                "evidence_count": 2,
+                "evidence": [{"title": "Player question"}],
+            }],
+        }
+
+        def serp(query: str):
+            items = [{"title": "Example Game puzzle answer", "domain": "youtube.com", "url": "https://youtube.com/a"}]
+            return {"status": "SUPPORTED", "items": items} if query != "Example Game" else {"status": "SUPPORTED", "items": []}
+
+        result = run_preflight(
+            _job("Example Game", social=social),
+            autocomplete_fn=_autocomplete("Example Game"),
+            serp_fn=serp,
+        )
+        topic = result["launch_topics"][0]
+        self.assertEqual(topic["query"], "How puzzle 1?")
+        self.assertEqual(topic["question"], "How puzzle 1?")
+        self.assertEqual(topic["source"], "SOCIAL")
+        self.assertEqual(topic["topic"], "Puzzle help")
+        self.assertEqual(topic["source_cluster"]["providers"], ["reddit"])
+        self.assertEqual(topic["serp_summary"]["organic_count"], 1)
+        self.assertEqual(topic["launch_candidate_status"], "CANDIDATE")
+        self.assertNotIn("recommendation", topic)
 
     def test_provider_failure_is_not_reject(self):
         def failed(*_args):

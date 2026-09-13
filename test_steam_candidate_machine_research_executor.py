@@ -127,6 +127,69 @@ class SteamCandidateMachineResearchExecutorTests(unittest.TestCase):
         self.assertEqual(sent[0]["preflight_verdict"], "WATCH")
         self.assertNotIn("recommendation", sent[0])
 
+    def test_default_machine_executor_reuses_social_and_preflight_serp(self) -> None:
+        sent: list[dict] = []
+        social_calls: list[str] = []
+        serp_calls: list[str] = []
+
+        def social_fn(_job: dict) -> dict:
+            social_calls.append("social")
+            return {
+                "status": "AVAILABLE",
+                "evidence_count": 2,
+                "actionable_cluster_count": 1,
+                "watch_cluster_count": 0,
+                "top_clusters": [{
+                    "topic": "Puzzle help",
+                    "representative_questions": ["How puzzle 1?", "How puzzle 2?"],
+                    "providers": ["reddit"],
+                    "evidence_count": 2,
+                    "evidence": [{"title": "Player question"}],
+                }],
+            }
+
+        def serp_fn(query: str) -> dict:
+            serp_calls.append(query)
+            return {"status": "SUPPORTED", "items": [{
+                "title": "Example Game puzzle answer",
+                "domain": "youtube.com",
+                "url": "https://youtube.com/example",
+            }]}
+
+        def preflight_fn(job: dict, **kwargs) -> dict:
+            return preflight.run_preflight(
+                job,
+                autocomplete_fn=lambda _source, _query: {"status": "BEST_EFFORT", "items": []},
+                serp_fn=serp_fn,
+                **kwargs,
+            )
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(
+            os.environ,
+            {
+                "STEAM_CANDIDATE_RESEARCH_API_URL": "https://sheet.example/exec",
+                "STEAM_CANDIDATE_RESEARCH_CALLBACK_TOKEN": "callback-secret",
+            },
+        ):
+            root = Path(tmp)
+            outcome = executor.run_job(
+                self._write_job(root),
+                root=root,
+                social_fn=social_fn,
+                preflight_fn=preflight_fn,
+                post_fn=lambda _url, body: (sent.append(body) or {"ok": True}),
+            )
+            artifact = json.loads(
+                (root / "jobs" / _job()["job_id"] / "steam_candidate_research_result.json").read_text()
+            )
+
+        self.assertTrue(outcome["ok"])
+        self.assertEqual(social_calls, ["social"])
+        self.assertEqual(serp_calls, ["Example Game", "How puzzle 1?", "How puzzle 2?"])
+        self.assertEqual(len(artifact["launch_topics"]), 2)
+        self.assertTrue(artifact["serp"]["provider_metadata"]["reused_preflight"])
+        self.assertIn("recommendation", sent[0])
+
 
 if __name__ == "__main__":
     unittest.main()

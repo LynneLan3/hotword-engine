@@ -208,17 +208,50 @@ def _run_serp(job: dict[str, Any], fetch_fn: FetchFn | None) -> dict[str, Any]:
         }
 
 
+def _reuse_preflight_serp(job: dict[str, Any], preflight_result: dict[str, Any]) -> dict[str, Any]:
+    preflight_serp = preflight_result.get("serp") if isinstance(preflight_result.get("serp"), dict) else {}
+    queries = preflight_serp.get("queries") if isinstance(preflight_serp.get("queries"), list) else []
+    available = [
+        query for query in queries
+        if isinstance(query, dict) and str(query.get("status") or "").upper() in {"SUPPORTED", "AVAILABLE"}
+    ]
+    organic_count = sum(int(query.get("organic_count") or 0) for query in queries if isinstance(query, dict))
+    classifications = [
+        classification
+        for query in queries
+        if isinstance(query, dict)
+        for classification in query.get("result_classifications") or []
+        if isinstance(classification, dict)
+    ]
+    signals = ["HIGH_GUIDE_DENSITY"] if preflight_serp.get("high_guide_density") else []
+    return {
+        "status": "AVAILABLE" if available else "UNAVAILABLE",
+        "query": job["game_name"],
+        "organic_count": organic_count,
+        "competition_summary": {
+            "organic_count": organic_count,
+            "signals": signals,
+            "result_classifications": classifications,
+        },
+        "error": None if available else "preflight_serp_unavailable",
+        "provider_metadata": {"reused_preflight": True, "query_count": len(queries)},
+    }
+
+
 def run_candidate_research(
     job: dict[str, Any],
     fetch_fn: FetchFn | None = None,
+    *,
+    social_result: dict[str, Any] | None = None,
+    preflight_result: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     job = validate_job(dict(job))
-    social = _run_social(job) if SOCIAL_CHECK in {str(x).strip().upper() for x in job["requested_checks"]} else {
+    social = social_result if isinstance(social_result, dict) else _run_social(job) if SOCIAL_CHECK in {str(x).strip().upper() for x in job["requested_checks"]} else {
         "status": "UNAVAILABLE", "evidence_count": 0, "cluster_count": 0,
         "actionable_cluster_count": 0, "watch_cluster_count": 0, "top_clusters": [],
         "source_failures": {}, "error": "check_not_requested",
     }
-    serp = _run_serp(job, fetch_fn) if SERP_CHECK in {str(x).strip().upper() for x in job["requested_checks"]} else {
+    serp = _reuse_preflight_serp(job, preflight_result) if isinstance(preflight_result, dict) else _run_serp(job, fetch_fn) if SERP_CHECK in {str(x).strip().upper() for x in job["requested_checks"]} else {
         "status": "UNAVAILABLE", "query": job["game_name"], "organic_count": 0,
         "competition_summary": None, "error": "check_not_requested", "provider_metadata": {},
     }
@@ -233,6 +266,11 @@ def run_candidate_research(
         "manual_signals": job["manual_signals"],
         "social": social,
         "serp": serp,
+        "launch_topics": (
+            preflight_result.get("launch_topics")
+            if isinstance(preflight_result, dict) and isinstance(preflight_result.get("launch_topics"), list)
+            else []
+        ),
         "research_status": research_status,
         "generated_at": now_iso(),
     }

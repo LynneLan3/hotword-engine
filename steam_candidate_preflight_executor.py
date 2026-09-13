@@ -118,6 +118,11 @@ def _research_artifact(job: dict[str, Any], social: dict[str, Any], result: dict
         "social": social,
         "serp": serp,
         "preflight": result,
+        "launch_topics": (
+            result.get("launch_topics")
+            if isinstance(result.get("launch_topics"), list)
+            else preflight.build_launch_topics(social, result)
+        ),
         "generated_at": result.get("checked_at") or _now_iso(),
     }
 
