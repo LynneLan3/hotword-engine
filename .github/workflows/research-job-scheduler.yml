@@ -2,8 +2,6 @@ name: Research Job Scheduler
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '23 * * * *'
 
 permissions:
   contents: read
